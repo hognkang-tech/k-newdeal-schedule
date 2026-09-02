@@ -41,6 +41,28 @@ def get_current_password():
     return pw
 
 
+def get_formatted_sessions_text(course_id, conn):
+    """특정 강좌의 세부일정을 텍스트 형태(예: 10.6(화) 09:00~18:00)로 가공"""
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT session_date, start_time, end_time FROM course_sessions WHERE"
+        " course_id = ? ORDER BY session_date",
+        (course_id,),
+    )
+    sessions = cursor.fetchall()
+    lines = []
+    weekday_kr = ["월", "화", "수", "목", "금", "토", "일"]
+    for s_date, s_time, e_time in sessions:
+        try:
+            dt = datetime.strptime(s_date, "%Y-%m-%d")
+            w_str = weekday_kr[dt.weekday()]
+            m, d = dt.month, dt.day
+            lines.append(f"{m}.{d}({w_str}) {s_time}~{e_time}")
+        except ValueError:
+            lines.append(f"{s_date} {s_time}~{e_time}")
+    return "\n".join(lines)
+
+
 st.title("K-뉴딜 커리어 일정 & 강사 관리 시스템 [v1.6.0 Web]")
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -51,10 +73,18 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "🔒 5. DB 데이터 관리/수정",
 ])
 
-# DB 데이터 불러오기
+# DB 데이터 로드 및 세부시간 가공
 conn = get_connection()
 try:
     df_courses = pd.read_sql_query("SELECT * FROM courses", conn)
+
+    # 일자별 세부시간 가공 컬럼 추가
+    if not df_courses.empty:
+        session_texts = []
+        for c_id in df_courses["id"]:
+            session_texts.append(get_formatted_sessions_text(c_id, conn))
+        df_courses["일자별 세부 시간"] = session_texts
+
     df_sessions = pd.read_sql_query(
         "SELECT cs.*, c.course_name, c.degree, c.region, c.instructor, c.period,"
         " c.total_hours, c.location FROM course_sessions cs JOIN courses c ON"
@@ -70,42 +100,123 @@ conn.close()
 with tab1:
     st.subheader("전체 일정 조회")
     if not df_courses.empty:
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
+
+        # 강사 목록 가나다 오름차순 정렬
+        sorted_degrees = sorted(
+            [str(x) for x in df_courses["degree"].dropna().unique()]
+        )
+        sorted_regions = sorted(
+            [str(x) for x in df_courses["region"].dropna().unique()]
+        )
+        sorted_courses = sorted(
+            [str(x) for x in df_courses["course_name"].dropna().unique()]
+        )
+        sorted_instructors = sorted(
+            [str(x) for x in df_courses["instructor"].dropna().unique()]
+        )
+
         with col1:
-            degree_f = st.selectbox(
-                "차수", ["전체"] + list(df_courses["degree"].dropna().unique())
-            )
+            degree_f = st.selectbox("차수 선택", ["전체 (차수)"] + sorted_degrees)
         with col2:
             region_f = st.selectbox(
-                "지역", ["전체"] + list(df_courses["region"].dropna().unique())
+                "지역/권역 선택", ["전체 (지역)"] + sorted_regions
             )
         with col3:
+            course_f = st.selectbox(
+                "과목명 선택", ["전체 (과목)"] + sorted_courses
+            )
+        with col4:
             inst_f = st.selectbox(
-                "강사",
-                ["전체"] + list(df_courses["instructor"].dropna().unique()),
+                "담당강사 선택", ["전체 (강사)"] + sorted_instructors
             )
 
         filtered = df_courses.copy()
-        if degree_f != "전체":
+        if degree_f != "전체 (차수)":
             filtered = filtered[filtered["degree"] == degree_f]
-        if region_f != "전체":
+        if region_f != "전체 (지역)":
             filtered = filtered[filtered["region"] == region_f]
-        if inst_f != "전체":
+        if course_f != "전체 (과목)":
+            filtered = filtered[filtered["course_name"] == course_f]
+        if inst_f != "전체 (강사)":
             filtered = filtered[filtered["instructor"] == inst_f]
 
-        st.dataframe(filtered, use_container_width=True)
+        # 컬럼 순서 및 한글명 지정 (로컬 UI와 동일하게)
+        disp_df1 = filtered[[
+            "id",
+            "group_name",
+            "region",
+            "course_name",
+            "degree",
+            "period",
+            "일자별 세부 시간",
+            "total_hours",
+            "location",
+            "instructor",
+        ]].copy()
+        disp_df1.columns = [
+            "ID",
+            "그룹",
+            "지역/권역",
+            "과목(진행과정)",
+            "차수",
+            "전체진행일정",
+            "일자별 세부 시간",
+            "총 강의시간(h)",
+            "교육장소/주소",
+            "담당강사",
+        ]
 
-# --- 탭 2: 강사별 상세 검색 ---
+        st.dataframe(disp_df1, use_container_width=True, height=500)
+
+# --- 탭 2: 강사별 상세 검색 (기본값: 전체, 가나다순 정렬) ---
 with tab2:
-    st.subheader("강사별 배정 일정")
+    st.subheader("강사별 배정 일정 상세 검색")
     if not df_courses.empty:
-        inst_list = list(df_courses["instructor"].dropna().unique())
-        sel_inst = st.selectbox("강사 선택", inst_list)
-        inst_data = df_courses[df_courses["instructor"] == sel_inst]
-        st.metric("배정 강의 수", f"{len(inst_data)}건")
-        st.dataframe(inst_data, use_container_width=True)
+        # 가나다 오름차순 정렬된 강사 목록
+        sorted_instructors = sorted(
+            [str(x) for x in df_courses["instructor"].dropna().unique()]
+        )
 
-# --- 탭 3: 강의 캘린더 (진짜 7열 격자 달력 구조 반영) ---
+        # 기본값: '전체 (강사를 선택하세요)'
+        sel_inst = st.selectbox(
+            "강사 선택",
+            ["전체 (강사를 선택하세요)"] + sorted_instructors,
+            index=0,
+        )
+
+        if sel_inst == "전체 (강사를 선택하세요)":
+            st.info("상단 드롭다운 메뉴에서 상세 조회할 강사명을 선택해 주세요.")
+            inst_data = df_courses.copy()
+            st.metric("전체 등록 강좌 수", f"{len(inst_data)}건")
+        else:
+            inst_data = df_courses[df_courses["instructor"] == sel_inst]
+            st.metric(f"[{sel_inst}] 강사 배정 강의 수", f"{len(inst_data)}건")
+
+        disp_df2 = inst_data[[
+            "degree",
+            "region",
+            "course_name",
+            "period",
+            "일자별 세부 시간",
+            "total_hours",
+            "location",
+            "instructor",
+        ]].copy()
+        disp_df2.columns = [
+            "차수",
+            "지역/권역",
+            "강의 과목명",
+            "전체 기간",
+            "일자별 세부 강의시간",
+            "총시간(h)",
+            "교육장소/주소",
+            "담당강사",
+        ]
+
+        st.dataframe(disp_df2, use_container_width=True, height=500)
+
+# --- 탭 3: 강의 캘린더 ---
 with tab3:
     st.subheader("강의 캘린더")
 
@@ -118,23 +229,16 @@ with tab3:
             )
 
     if not df_sessions.empty:
-        # 날짜별 강의 수 집계
         date_counts = df_sessions["session_date"].value_counts().to_dict()
 
-        # 조회할 년/월 선택
         col_year, col_month = st.columns(2)
         with col_year:
             year = st.selectbox("연도 선택", [2026, 2027], index=0)
         with col_month:
-            month = st.selectbox(
-                "월 선택",
-                list(range(1, 13)),
-                index=9,  # 기본값 10월
-            )
+            month = st.selectbox("월 선택", list(range(1, 13)), index=9)
 
         st.markdown(f"#### 📌 {year}년 {month}월 강의 일정 달력")
 
-        # 요일 헤더 (월~일)
         cols_header = st.columns(7)
         days_kr = ["월", "화", "수", "목", "금", "토", "일"]
         for idx, day_name in enumerate(days_kr):
@@ -145,18 +249,15 @@ with tab3:
                 unsafe_allow_html=True,
             )
 
-        # calendar 모듈을 이용한 월별 주차/요일 데이터 계산
-        cal = calendar.Calendar(firstweekday=0)  # 월요일부터 시작
+        cal = calendar.Calendar(firstweekday=0)
         month_days = cal.monthdatescalendar(year, month)
 
-        # 7열 달력 그리드 출력
         for week in month_days:
             cols = st.columns(7)
             for idx, date_obj in enumerate(week):
                 date_str = date_obj.strftime("%Y-%m-%d")
                 day_num = date_obj.day
 
-                # 해당 월에 속하는 날짜만 출력
                 if date_obj.month == month:
                     count = date_counts.get(date_str, 0)
                     badge_html = (
@@ -175,7 +276,6 @@ with tab3:
                         unsafe_allow_html=True,
                     )
                 else:
-                    # 지난달/다음달 날짜는 빈 칸 처리
                     cols[idx].markdown(
                         "<div style='border:1px solid #f0f0f0;"
                         " background-color:#fcfcfc; padding:8px;"
@@ -185,7 +285,6 @@ with tab3:
 
         st.markdown("---")
 
-        # 하단 날짜 선택 및 상세 일정 표출
         available_dates = sorted([
             d
             for d in date_counts.keys()

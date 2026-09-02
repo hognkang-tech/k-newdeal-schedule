@@ -42,7 +42,7 @@ def get_current_password():
 
 
 def get_formatted_sessions_html(course_id, conn):
-    """일자별 세부일정을 HTML 줄바꿈(<br>)으로 세로 정렬 가공"""
+    """일자별 세부일정을 HTML 줄바꿈(<br>)으로 세로 정렬 가공 (한 줄 잘림 방지 스타일 적용)"""
     cursor = conn.cursor()
     cursor.execute(
         "SELECT session_date, start_time, end_time FROM course_sessions WHERE"
@@ -57,10 +57,68 @@ def get_formatted_sessions_html(course_id, conn):
             dt = datetime.strptime(s_date, "%Y-%m-%d")
             w_str = weekday_kr[dt.weekday()]
             m, d = dt.month, dt.day
-            lines.append(f"{m}.{d}({w_str}) {s_time}~{e_time}")
+            lines.append(
+                f"<span style='white-space: nowrap;'>{m}.{d}({w_str})"
+                f" {s_time}~{e_time}</span>"
+            )
         except ValueError:
-            lines.append(f"{s_date} {s_time}~{e_time}")
+            lines.append(
+                f"<span style='white-space:"
+                f" nowrap;'>{s_date} {s_time}~{e_time}</span>"
+            )
     return "<br>".join(lines)
+
+
+def render_styled_table(df, detail_col_name="일자별 세부 시간"):
+    """표 열 너비 및 세로 중앙 정렬 스타일링이 적용된 HTML Table 출력"""
+    html_code = f"""
+    <style>
+        .custom-schedule-table {{
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            font-family: '맑은 고딕', sans-serif;
+        }}
+        .custom-schedule-table th {{
+            background-color: #f5f5f5;
+            color: #333;
+            font-weight: bold;
+            padding: 10px 8px;
+            border: 1px solid #e0e0e0;
+            text-align: center;
+        }}
+        .custom-schedule-table td {{
+            padding: 8px 10px;
+            border: 1px solid #e0e0e0;
+            vertical-align: middle;
+            text-align: center;
+        }}
+        .custom-schedule-table td.detail-cell {{
+            text-align: left !important;
+            line-height: 1.5;
+            min-width: 180px;
+        }}
+    </style>
+    <table class="custom-schedule-table">
+        <thead>
+            <tr>
+                {"".join([f"<th>{col}</th>" for col in df.columns])}
+            </tr>
+        </thead>
+        <tbody>
+    """
+    for _, row in df.iterrows():
+        html_code += "<tr>"
+        for col in df.columns:
+            val = str(row[col]) if pd.notnull(row[col]) else ""
+            if col == detail_col_name:
+                html_code += f'<td class="detail-cell">{val}</td>'
+            else:
+                html_code += f"<td>{val}</td>"
+        html_code += "</tr>"
+    html_code += "</tbody></table>"
+
+    st.write(html_code, unsafe_allow_html=True)
 
 
 st.title("K-뉴딜 커리어 일정 & 강사 관리 시스템 [v1.6.0 Web]")
@@ -164,10 +222,7 @@ with tab1:
             "담당강사",
         ]
 
-        # 세로 줄바꿈 HTML 표현 적용
-        st.write(
-            disp_df1.to_html(escape=False, index=False), unsafe_allow_html=True
-        )
+        render_styled_table(disp_df1, detail_col_name="일자별 세부 시간")
 
 # --- 탭 2: 강사별 상세 검색 ---
 with tab2:
@@ -212,10 +267,7 @@ with tab2:
             "담당강사",
         ]
 
-        # 세로 줄바꿈 HTML 표현 적용
-        st.write(
-            disp_df2.to_html(escape=False, index=False), unsafe_allow_html=True
-        )
+        render_styled_table(disp_df2, detail_col_name="일자별 세부 강의시간")
 
 # --- 탭 3: 강의 캘린더 ---
 with tab3:

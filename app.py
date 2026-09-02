@@ -9,55 +9,45 @@ st.set_page_config(
 )
 
 # =========================================================
-# 🔒 구글 OAuth 로그인 & 이메일 화이트리스트 접근 제어
+# 🔒 간단한 시스템 접속 비밀번호 인증 (기본값: knew2026)
 # =========================================================
-# Streamlit st.user 인증 상태 점검
-try:
-    is_logged_in = getattr(st.user, "is_logged_in", False)
-except Exception:
-    is_logged_in = False
+SITE_PASSWORD = st.secrets.get(
+    "SITE_PASSWORD", "knew2026"
+)  # Secrets 미설정 시 기본값 사용
 
-if not is_logged_in:
-    st.title("🔒 로그인 필요")
-    st.info(
-        "K-뉴딜 커리어 일정 관리 시스템 접속을 위해 Google 계정으로"
-        " 로그인해 주세요."
-    )
-    if st.button("Google 계정으로 로그인", type="primary"):
-        st.login("google")
-    st.stop()
+if "user_authenticated" not in st.session_state:
+    st.session_state.user_authenticated = False
 
-# 로그인 이메일 가져오기
-user_email = getattr(st.user, "email", "")
+if not st.session_state.user_authenticated:
+    st.title("🔒 K-뉴딜 일정 관리 시스템 로그인")
+    st.info("시스템 접속을 위해 비밀번호(문자+숫자 8자리)를 입력해 주세요.")
 
-# Secrets에 등록된 허용 이메일 목록 확인
-allowed_emails_str = st.secrets.get("ALLOWED_EMAILS", "")
-allowed_emails = [
-    e.strip().lower() for e in allowed_emails_str.split(",") if e.strip()
-]
+    input_site_pw = st.text_input("접속 비밀번호 입력", type="password")
+    if st.button("로그인", type="primary"):
+        if input_site_pw == SITE_PASSWORD:
+            st.session_state.user_authenticated = True
+            st.success("인증에 성공했습니다!")
+            st.rerun()
+        else:
+            st.error("비밀번호가 올바르지 않습니다. 다시 확인해 주세요.")
 
-if user_email.lower() not in allowed_emails:
-    st.error(
-        f"⛔ 접근 권한이 없습니다. (현재 계정: {user_email})\n\n시스템"
-        " 관리자에게 권한 부여를 요청해 주세요."
-    )
-    if st.button("로그아웃"):
-        st.logout()
-    st.stop()
+    st.stop()  # 로그인 전 이하 코드 실행 차단
 
-# 상단 로그인 정보 표시
+# 로그인 성공 시 상단에 사용자 안내 및 로그아웃 버튼 표시
 col_user, col_logout = st.columns([8, 2])
 with col_user:
-    st.success(f"👤 접속 계정: **{user_email}** (인증 완료)")
+    st.success("✅ K-뉴딜 일정 관리 시스템에 로그인되었습니다.")
 with col_logout:
     if st.button("🔒 로그아웃"):
-        st.logout()
+        st.session_state.user_authenticated = False
+        st.session_state.authenticated = False
+        st.rerun()
 
 st.markdown("---")
 
 
 # =========================================================
-# 메인 앱 로직
+# 메인 데이터베이스 및 유틸리티 함수
 # =========================================================
 def get_connection():
     return sqlite3.connect("schedule_db.db")
@@ -204,7 +194,7 @@ def render_styled_table(df, detail_col_name="일자별 세부 시간"):
             else:
                 html_code += f"<td>{val}</td>"
         html_code += "</tr>"
-    html_code += "</tbody>mtable>"
+    html_code += "</tbody></table>"
 
     st.write(html_code, unsafe_allow_html=True)
 
@@ -458,8 +448,10 @@ with tab4:
     st.subheader("DB 데이터 관리/수정")
 
     if not st.session_state.authenticated:
-        st.warning("이 메뉴에 접근하려면 비밀번호 4자리를 입력하세요.")
-        input_pw = st.text_input("비밀번호", type="password")
+        st.warning(
+            "데이터 관리/수정 권한을 얻으려면 관리자 비밀번호 4자리를 입력하세요."
+        )
+        input_pw = st.text_input("관리자 비밀번호", type="password")
         if st.button("인증 확인"):
             if input_pw == get_current_password():
                 st.session_state.authenticated = True
@@ -798,7 +790,7 @@ with tab4:
                     st.rerun()
 
         elif manage_mode == "3. 관리자 비밀번호 변경":
-            st.markdown("### 🔑 비밀번호 변경 (숫자 4자리)")
+            st.markdown("### 🔑 관리자 비밀번호 변경 (숫자 4자리)")
             curr_pw = st.text_input("기존 비밀번호", type="password")
             new_pw1 = st.text_input("새 비밀번호 (숫자 4자리)", type="password")
             new_pw2 = st.text_input("새 비밀번호 확인", type="password")

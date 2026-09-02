@@ -1,3 +1,4 @@
+import calendar
 import sqlite3
 from datetime import datetime
 import pandas as pd
@@ -104,7 +105,7 @@ with tab2:
         st.metric("배정 강의 수", f"{len(inst_data)}건")
         st.dataframe(inst_data, use_container_width=True)
 
-# --- 탭 3: 강의 캘린더 (Streamlit 내장 캘린더 UI) ---
+# --- 탭 3: 강의 캘린더 (진짜 7열 격자 달력 구조 반영) ---
 with tab3:
     st.subheader("강의 캘린더")
 
@@ -119,81 +120,116 @@ with tab3:
     if not df_sessions.empty:
         # 날짜별 강의 수 집계
         date_counts = df_sessions["session_date"].value_counts().to_dict()
-        available_dates = sorted(list(date_counts.keys()))
 
-        # 날짜 선택 드롭다운 (가장 직관적인 조작)
-        selected_date = st.selectbox(
-            "📅 상세 일정을 조회할 날짜를 선택하세요:",
-            available_dates,
-            index=0,
-        )
+        # 조회할 년/월 선택
+        col_year, col_month = st.columns(2)
+        with col_year:
+            year = st.selectbox("연도 선택", [2026, 2027], index=0)
+        with col_month:
+            month = st.selectbox(
+                "월 선택",
+                list(range(1, 13)),
+                index=9,  # 기본값 10월
+            )
 
-        # 캘린더 요약 뷰 (달력 형태 그리드 카드 표출)
-        st.markdown("#### 📌 2026년 10월 개설 강좌 일정 요약")
-        cols = st.columns(7)
+        st.markdown(f"#### 📌 {year}년 {month}월 강의 일정 달력")
+
+        # 요일 헤더 (월~일)
+        cols_header = st.columns(7)
         days_kr = ["월", "화", "수", "목", "금", "토", "일"]
         for idx, day_name in enumerate(days_kr):
-            cols[idx].markdown(
+            cols_header[idx].markdown(
                 f"<div style='text-align:center; font-weight:bold;"
-                f" background-color:#1565c0; color:white; padding:5px;"
+                f" background-color:#1565c0; color:white; padding:6px;"
                 f" border-radius:4px;'>{day_name}</div>",
                 unsafe_allow_html=True,
             )
 
-        # 10월 날짜별 카드 바인딩
-        for date_str in available_dates:
-            if date_str.startswith("2026-10"):
-                count = date_counts[date_str]
-                day_num = date_str.split("-")[2]
-                is_selected = date_str == selected_date
-                border_style = (
-                    "2px solid #d32f2f" if is_selected else "1px solid #ccc"
-                )
-                bg_style = "#ffebee" if is_selected else "#f9f9f9"
+        # calendar 모듈을 이용한 월별 주차/요일 데이터 계산
+        cal = calendar.Calendar(firstweekday=0)  # 월요일부터 시작
+        month_days = cal.monthdatescalendar(year, month)
 
-                st.markdown(
-                    f"<div style='border:{border_style};"
-                    f" background-color:{bg_style}; padding:10px;"
-                    " border-radius:6px; margin-top:5px; margin-bottom:5px;'>"
-                    f"<b>10월 {day_num}일</b> <span style='float:right;"
-                    " background-color:#d32f2f; color:white; padding:2px 8px;"
-                    f" border-radius:10px; font-size:12px;'>{count}개"
-                    " 강좌</span></div>",
-                    unsafe_allow_html=True,
-                )
+        # 7열 달력 그리드 출력
+        for week in month_days:
+            cols = st.columns(7)
+            for idx, date_obj in enumerate(week):
+                date_str = date_obj.strftime("%Y-%m-%d")
+                day_num = date_obj.day
+
+                # 해당 월에 속하는 날짜만 출력
+                if date_obj.month == month:
+                    count = date_counts.get(date_str, 0)
+                    badge_html = (
+                        f"<br><span style='background-color:#d32f2f;"
+                        " color:white; padding:2px 6px; border-radius:10px;"
+                        f" font-size:11px;'>{count}개 강좌</span>"
+                        if count > 0
+                        else ""
+                    )
+
+                    cols[idx].markdown(
+                        "<div style='border:1px solid #ddd;"
+                        " background-color:#ffffff; padding:8px;"
+                        " border-radius:6px; min-height:75px;"
+                        f" text-align:center;'><b>{day_num}</b>{badge_html}</div>",
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    # 지난달/다음달 날짜는 빈 칸 처리
+                    cols[idx].markdown(
+                        "<div style='border:1px solid #f0f0f0;"
+                        " background-color:#fcfcfc; padding:8px;"
+                        " border-radius:6px; min-height:75px;'></div>",
+                        unsafe_allow_html=True,
+                    )
 
         st.markdown("---")
-        st.subheader(f"선택한 날짜 [{selected_date}] 상세 강의 정보")
 
-        day_sessions = df_sessions[
-            df_sessions["session_date"] == selected_date
-        ]
-        if not day_sessions.empty:
-            disp_df = day_sessions[[
-                "degree",
-                "course_name",
-                "region",
-                "instructor",
-                "start_time",
-                "end_time",
-                "period",
-                "total_hours",
-                "location",
-            ]].copy()
-            disp_df.columns = [
-                "차수",
-                "과목명",
-                "지역/권역",
-                "담당강사",
-                "시작시간",
-                "종료시간",
-                "전체기간",
-                "총시간(h)",
-                "교육장소/주소",
+        # 하단 날짜 선택 및 상세 일정 표출
+        available_dates = sorted([
+            d
+            for d in date_counts.keys()
+            if d.startswith(f"{year}-{month:02d}")
+        ])
+        if available_dates:
+            selected_date = st.selectbox(
+                "📅 상세 정보를 확인할 날짜를 선택하세요:",
+                available_dates,
+            )
+
+            st.markdown(
+                f"##### 선택한 날짜 **[{selected_date}]** 상세 강의 목록"
+            )
+            day_sessions = df_sessions[
+                df_sessions["session_date"] == selected_date
             ]
-            st.dataframe(disp_df, use_container_width=True)
+
+            if not day_sessions.empty:
+                disp_df = day_sessions[[
+                    "degree",
+                    "course_name",
+                    "region",
+                    "instructor",
+                    "start_time",
+                    "end_time",
+                    "period",
+                    "total_hours",
+                    "location",
+                ]].copy()
+                disp_df.columns = [
+                    "차수",
+                    "과목명",
+                    "지역/권역",
+                    "담당강사",
+                    "시작시간",
+                    "종료시간",
+                    "전체기간",
+                    "총시간(h)",
+                    "교육장소/주소",
+                ]
+                st.dataframe(disp_df, use_container_width=True)
         else:
-            st.info("해당 날짜에 개설된 강의가 없습니다.")
+            st.info(f"{year}년 {month}월에는 개설된 강의가 없습니다.")
 
 # --- 탭 4: 변경 이력 로그 ---
 with tab4:

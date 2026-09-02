@@ -41,8 +41,8 @@ def get_current_password():
     return pw
 
 
-def get_formatted_sessions_text(course_id, conn):
-    """특정 강좌의 세부일정을 텍스트 형태(예: 10.6(화) 09:00~18:00)로 가공"""
+def get_formatted_sessions_html(course_id, conn):
+    """일자별 세부일정을 HTML 줄바꿈(<br>)으로 세로 정렬 가공"""
     cursor = conn.cursor()
     cursor.execute(
         "SELECT session_date, start_time, end_time FROM course_sessions WHERE"
@@ -60,7 +60,7 @@ def get_formatted_sessions_text(course_id, conn):
             lines.append(f"{m}.{d}({w_str}) {s_time}~{e_time}")
         except ValueError:
             lines.append(f"{s_date} {s_time}~{e_time}")
-    return "\n".join(lines)
+    return "<br>".join(lines)
 
 
 st.title("K-뉴딜 커리어 일정 & 강사 관리 시스템 [v1.6.0 Web]")
@@ -78,12 +78,11 @@ conn = get_connection()
 try:
     df_courses = pd.read_sql_query("SELECT * FROM courses", conn)
 
-    # 일자별 세부시간 가공 컬럼 추가
     if not df_courses.empty:
-        session_texts = []
+        session_htmls = []
         for c_id in df_courses["id"]:
-            session_texts.append(get_formatted_sessions_text(c_id, conn))
-        df_courses["일자별 세부 시간"] = session_texts
+            session_htmls.append(get_formatted_sessions_html(c_id, conn))
+        df_courses["일자별 세부 시간"] = session_htmls
 
     df_sessions = pd.read_sql_query(
         "SELECT cs.*, c.course_name, c.degree, c.region, c.instructor, c.period,"
@@ -102,7 +101,6 @@ with tab1:
     if not df_courses.empty:
         col1, col2, col3, col4 = st.columns(4)
 
-        # 강사 목록 가나다 오름차순 정렬
         sorted_degrees = sorted(
             [str(x) for x in df_courses["degree"].dropna().unique()]
         )
@@ -141,7 +139,6 @@ with tab1:
         if inst_f != "전체 (강사)":
             filtered = filtered[filtered["instructor"] == inst_f]
 
-        # 컬럼 순서 및 한글명 지정 (로컬 UI와 동일하게)
         disp_df1 = filtered[[
             "id",
             "group_name",
@@ -167,18 +164,19 @@ with tab1:
             "담당강사",
         ]
 
-        st.dataframe(disp_df1, use_container_width=True, height=500)
+        # 세로 줄바꿈 HTML 표현 적용
+        st.write(
+            disp_df1.to_html(escape=False, index=False), unsafe_allow_html=True
+        )
 
-# --- 탭 2: 강사별 상세 검색 (기본값: 전체, 가나다순 정렬) ---
+# --- 탭 2: 강사별 상세 검색 ---
 with tab2:
     st.subheader("강사별 배정 일정 상세 검색")
     if not df_courses.empty:
-        # 가나다 오름차순 정렬된 강사 목록
         sorted_instructors = sorted(
             [str(x) for x in df_courses["instructor"].dropna().unique()]
         )
 
-        # 기본값: '전체 (강사를 선택하세요)'
         sel_inst = st.selectbox(
             "강사 선택",
             ["전체 (강사를 선택하세요)"] + sorted_instructors,
@@ -214,7 +212,10 @@ with tab2:
             "담당강사",
         ]
 
-        st.dataframe(disp_df2, use_container_width=True, height=500)
+        # 세로 줄바꿈 HTML 표현 적용
+        st.write(
+            disp_df2.to_html(escape=False, index=False), unsafe_allow_html=True
+        )
 
 # --- 탭 3: 강의 캘린더 ---
 with tab3:

@@ -98,9 +98,15 @@ def get_formatted_sessions_html(course_id, conn):
             dt = datetime.strptime(s_date, "%Y-%m-%d")
             w_str = weekday_kr[dt.weekday()]
             m, d = dt.month, dt.day
-            lines.append(f"{m}.{d}({w_str}) {s_time}~{e_time}")
+            lines.append(
+                f"<span style='white-space: nowrap;'>{m}.{d}({w_str})"
+                f" {s_time}~{e_time}</span>"
+            )
         except ValueError:
-            lines.append(f"{s_date} {s_time}~{e_time}")
+            lines.append(
+                f"<span style='white-space:"
+                f" nowrap;'>{s_date} {s_time}~{e_time}</span>"
+            )
     return "<br>".join(lines)
 
 
@@ -132,7 +138,6 @@ def render_styled_table(df, detail_col_name="일자별 세부 시간"):
             text-align: left !important;
             line-height: 1.6;
             min-width: 180px;
-            white-space: nowrap;
         }}
     </style>
     <table class="custom-schedule-table">
@@ -175,12 +180,12 @@ def recalculate_course_total_hours(course_id):
 
 st.title("K-뉴딜 커리어 일정 & 강사 관리 시스템 [v1.6.0 Web]")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+# 메뉴 재구성: 2번 강사별 상세 검색 삭제
+tab1, tab2, tab3, tab4 = st.tabs([
     "1. 일정 조회 및 검색",
-    "2. 강사별 상세 검색",
-    "3. 강의 캘린더",
-    "4. 변경 이력 로그",
-    "🔒 5. DB 데이터 관리/수정",
+    "2. 강의 캘린더",
+    "3. 변경 이력 로그",
+    "🔒 4. DB 데이터 관리/수정",
 ])
 
 # DB 데이터 로드
@@ -205,9 +210,9 @@ except Exception:
     df_sessions = pd.DataFrame()
 conn.close()
 
-# --- 탭 1: 일정 조회 및 검색 ---
+# --- 탭 1: 일정 조회 및 검색 (기존 검색 기능 유지) ---
 with tab1:
-    st.subheader("전체 일정 조회")
+    st.subheader("전체 일정 조회 및 검색")
     if not df_courses.empty:
         col1, col2, col3, col4 = st.columns(4)
 
@@ -276,53 +281,8 @@ with tab1:
 
         render_styled_table(disp_df1, detail_col_name="일자별 세부 시간")
 
-# --- 탭 2: 강사별 상세 검색 ---
+# --- 탭 2: 강의 캘린더 ---
 with tab2:
-    st.subheader("강사별 배정 일정 상세 검색")
-    if not df_courses.empty:
-        sorted_instructors = sorted(
-            [str(x) for x in df_courses["instructor"].dropna().unique()]
-        )
-
-        sel_inst = st.selectbox(
-            "강사 선택",
-            ["전체 (강사를 선택하세요)"] + sorted_instructors,
-            index=0,
-        )
-
-        if sel_inst == "전체 (강사를 선택하세요)":
-            st.info("상단 드롭다운 메뉴에서 상세 조회할 강사명을 선택해 주세요.")
-            inst_data = df_courses.copy()
-            st.metric("전체 등록 강좌 수", f"{len(inst_data)}건")
-        else:
-            inst_data = df_courses[df_courses["instructor"] == sel_inst]
-            st.metric(f"[{sel_inst}] 강사 배정 강의 수", f"{len(inst_data)}건")
-
-        disp_df2 = inst_data[[
-            "degree",
-            "region",
-            "course_name",
-            "period",
-            "일자별 세부 시간",
-            "total_hours",
-            "location",
-            "instructor",
-        ]].copy()
-        disp_df2.columns = [
-            "차수",
-            "지역/권역",
-            "강의 과목명",
-            "전체 기간",
-            "일자별 세부 강의시간",
-            "총시간(h)",
-            "교육장소/주소",
-            "담당강사",
-        ]
-
-        render_styled_table(disp_df2, detail_col_name="일자별 세부 강의시간")
-
-# --- 탭 3: 강의 캘린더 ---
-with tab3:
     st.subheader("강의 캘린더")
 
     col_btn, col_empty = st.columns([1, 3])
@@ -435,8 +395,8 @@ with tab3:
         else:
             st.info(f"{year}년 {month}월에는 개설된 강의가 없습니다.")
 
-# --- 탭 4: 변경 이력 로그 ---
-with tab4:
+# --- 탭 3: 변경 이력 로그 ---
+with tab3:
     st.subheader("변경 이력 감사 로그")
     conn = get_connection()
     try:
@@ -448,8 +408,8 @@ with tab4:
         st.info("기록된 로그가 없습니다.")
     conn.close()
 
-# --- 탭 5: DB 데이터 관리/수정 (완벽한 수정/추가/삭제 GUI 제공) ---
-with tab5:
+# --- 탭 4: DB 데이터 관리/수정 ---
+with tab4:
     st.subheader("DB 데이터 관리/수정")
 
     if not st.session_state.authenticated:
@@ -621,7 +581,6 @@ with tab5:
                             )
                             sel_sess_id = sess_options[sel_sess_label]
 
-                            # 선택한 세부 일정 데이터
                             curr_sess = [
                                 s for s in sessions if s[0] == sel_sess_id
                             ][0]

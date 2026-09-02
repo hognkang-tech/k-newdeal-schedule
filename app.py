@@ -2,7 +2,6 @@ import sqlite3
 from datetime import datetime
 import pandas as pd
 import streamlit as st
-from streamlit_calendar import calendar
 
 st.set_page_config(
     page_title="K-뉴딜 커리어 일정 관리", page_icon="📅", layout="wide"
@@ -105,7 +104,7 @@ with tab2:
         st.metric("배정 강의 수", f"{len(inst_data)}건")
         st.dataframe(inst_data, use_container_width=True)
 
-# --- 탭 3: 강의 캘린더 (시각화 달력 적용) ---
+# --- 탭 3: 강의 캘린더 (Streamlit 내장 캘린더 UI) ---
 with tab3:
     st.subheader("강의 캘린더")
 
@@ -117,77 +116,84 @@ with tab3:
                 " 내역이 없습니다!"
             )
 
-    # 캘린더 이벤트 데이터 가공
-    calendar_events = []
     if not df_sessions.empty:
-        for idx, row in df_sessions.iterrows():
-            calendar_events.append({
-                "title": f"[{row['instructor']}] {row['course_name']}",
-                "start": (
-                    f"{row['session_date']}T{row['start_time'] if row['start_time'] else '09:00'}:00"
-                ),
-                "end": (
-                    f"{row['session_date']}T{row['end_time'] if row['end_time'] else '18:00'}:00"
-                ),
-                "backgroundColor": "#1565c0",
-                "borderColor": "#0d47a1",
-            })
+        # 날짜별 강의 수 집계
+        date_counts = df_sessions["session_date"].value_counts().to_dict()
+        available_dates = sorted(list(date_counts.keys()))
 
-    calendar_options = {
-        "headerToolbar": {
-            "left": "today prev,next",
-            "center": "title",
-            "right": "dayGridMonth,timeGridWeek",
-        },
-        "initialDate": "2026-10-06",
-        "initialView": "dayGridMonth",
-        "selectable": True,
-    }
+        # 날짜 선택 드롭다운 (가장 직관적인 조작)
+        selected_date = st.selectbox(
+            "📅 상세 일정을 조회할 날짜를 선택하세요:",
+            available_dates,
+            index=0,
+        )
 
-    # 웹 캘린더 렌더링
-    cal_state = calendar(
-        events=calendar_events,
-        options=calendar_options,
-        custom_css="""
-        .fc-event-title { font-weight: bold; font-size: 13px; }
-        .fc-header-toolbar { font-weight: bold; }
-    """,
-        key="schedule_calendar",
-    )
+        # 캘린더 요약 뷰 (달력 형태 그리드 카드 표출)
+        st.markdown("#### 📌 2026년 10월 개설 강좌 일정 요약")
+        cols = st.columns(7)
+        days_kr = ["월", "화", "수", "목", "금", "토", "일"]
+        for idx, day_name in enumerate(days_kr):
+            cols[idx].markdown(
+                f"<div style='text-align:center; font-weight:bold;"
+                f" background-color:#1565c0; color:white; padding:5px;"
+                f" border-radius:4px;'>{day_name}</div>",
+                unsafe_allow_html=True,
+            )
 
-    st.markdown("---")
-    st.subheader("일자별 세부 강의 목록")
+        # 10월 날짜별 카드 바인딩
+        for date_str in available_dates:
+            if date_str.startswith("2026-10"):
+                count = date_counts[date_str]
+                day_num = date_str.split("-")[2]
+                is_selected = date_str == selected_date
+                border_style = (
+                    "2px solid #d32f2f" if is_selected else "1px solid #ccc"
+                )
+                bg_style = "#ffebee" if is_selected else "#f9f9f9"
 
-    # 달력에서 특정 날짜 클릭 시 해당 날짜 상세표 출력
-    selected_date = None
-    if cal_state.get("dateClick"):
-        selected_date = cal_state["dateClick"]["date"][:10]
+                st.markdown(
+                    f"<div style='border:{border_style};"
+                    f" background-color:{bg_style}; padding:10px;"
+                    " border-radius:6px; margin-top:5px; margin-bottom:5px;'>"
+                    f"<b>10월 {day_num}일</b> <span style='float:right;"
+                    " background-color:#d32f2f; color:white; padding:2px 8px;"
+                    f" border-radius:10px; font-size:12px;'>{count}개"
+                    " 강좌</span></div>",
+                    unsafe_allow_html=True,
+                )
 
-    if selected_date and not df_sessions.empty:
-        st.info(f"📅 선택한 날짜: **{selected_date}**")
+        st.markdown("---")
+        st.subheader(f"선택한 날짜 [{selected_date}] 상세 강의 정보")
+
         day_sessions = df_sessions[
             df_sessions["session_date"] == selected_date
         ]
         if not day_sessions.empty:
-            st.dataframe(
-                day_sessions[[
-                    "degree",
-                    "course_name",
-                    "region",
-                    "instructor",
-                    "start_time",
-                    "end_time",
-                    "location",
-                ]],
-                use_container_width=True,
-            )
+            disp_df = day_sessions[[
+                "degree",
+                "course_name",
+                "region",
+                "instructor",
+                "start_time",
+                "end_time",
+                "period",
+                "total_hours",
+                "location",
+            ]].copy()
+            disp_df.columns = [
+                "차수",
+                "과목명",
+                "지역/권역",
+                "담당강사",
+                "시작시간",
+                "종료시간",
+                "전체기간",
+                "총시간(h)",
+                "교육장소/주소",
+            ]
+            st.dataframe(disp_df, use_container_width=True)
         else:
-            st.write("해당 날짜에 개설된 강의가 없습니다.")
-    else:
-        st.write(
-            "달력의 날짜를 클릭하면 해당 일자의 상세 강의 정보가 아래에"
-            " 표시됩니다."
-        )
+            st.info("해당 날짜에 개설된 강의가 없습니다.")
 
 # --- 탭 4: 변경 이력 로그 ---
 with tab4:

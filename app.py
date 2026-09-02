@@ -8,13 +8,56 @@ st.set_page_config(
     page_title="K-뉴딜 커리어 일정 관리", page_icon="📅", layout="wide"
 )
 
+# =========================================================
+# 🔒 구글 OAuth 로그인 & 이메일 화이트리스트 접근 제어
+# =========================================================
+if not st.user.is_logged_in:
+    st.title("🔒 로그인 필요")
+    st.info(
+        "K-뉴딜 커리어 일정 관리 시스템 접속을 위해 Google 계정으로"
+        " 로그인해 주세요."
+    )
+    if st.button("Google 계정으로 로그인", type="primary"):
+        st.login("google")
+    st.stop()  # 로그인 전 이하 코드 실행 차단
 
+user_email = st.user.email
+
+# Secrets에 등록된 허용 이메일 목록 가져오기
+allowed_emails_str = st.secrets.get("ALLOWED_EMAILS", "")
+allowed_emails = [
+    e.strip().lower() for e in allowed_emails_str.split(",") if e.strip()
+]
+
+# 화이트리스트 체크
+if user_email.lower() not in allowed_emails:
+    st.error(
+        f"⛔ 접근 권한이 없습니다. (현재 계정: {user_email})\n\n시스템"
+        " 관리자에게 권한 부여를 요청해 주세요."
+    )
+    if st.button("로그아웃"):
+        st.logout()
+    st.stop()  # 허용되지 않은 계정 차단
+
+# 상단 로그인 정보 표시
+col_user, col_logout = st.columns([8, 2])
+with col_user:
+    st.success(f"👤 접속 계정: **{user_email}** (인증 완료)")
+with col_logout:
+    if st.button("🔒 로그아웃"):
+        st.logout()
+
+st.markdown("---")
+
+
+# =========================================================
+# 메인 앱 로직
+# =========================================================
 def get_connection():
     return sqlite3.connect("schedule_db.db")
 
 
 def calculate_session_hours(start_str, end_str):
-    """09:00~18:00 수업 시 점심시간(13:00~14:00) 1시간 자동 차감 연산"""
     fmt = "%H:%M"
     try:
         t_start = datetime.strptime(start_str, fmt)
@@ -83,7 +126,6 @@ def get_current_password():
 
 
 def get_formatted_sessions_html(course_id, conn):
-    """일자별 세부일정을 HTML 줄바꿈(<br>)으로 세로 정렬 가공"""
     cursor = conn.cursor()
     cursor.execute(
         "SELECT session_date, start_time, end_time FROM course_sessions WHERE"
@@ -111,7 +153,6 @@ def get_formatted_sessions_html(course_id, conn):
 
 
 def render_styled_table(df, detail_col_name="일자별 세부 시간"):
-    """표 열 너비 및 세로 중앙 정렬 스타일링이 적용된 HTML Table 출력"""
     html_code = f"""
     <style>
         .custom-schedule-table {{
@@ -180,7 +221,6 @@ def recalculate_course_total_hours(course_id):
 
 st.title("K-뉴딜 커리어 일정 & 강사 관리 시스템 [v1.6.0 Web]")
 
-# 메뉴 재구성: 2번 강사별 상세 검색 삭제
 tab1, tab2, tab3, tab4 = st.tabs([
     "1. 일정 조회 및 검색",
     "2. 강의 캘린더",
@@ -188,7 +228,6 @@ tab1, tab2, tab3, tab4 = st.tabs([
     "🔒 4. DB 데이터 관리/수정",
 ])
 
-# DB 데이터 로드
 conn = get_connection()
 try:
     df_courses = pd.read_sql_query("SELECT * FROM courses", conn)
@@ -210,7 +249,7 @@ except Exception:
     df_sessions = pd.DataFrame()
 conn.close()
 
-# --- 탭 1: 일정 조회 및 검색 (기존 검색 기능 유지) ---
+# --- 탭 1: 일정 조회 및 검색 ---
 with tab1:
     st.subheader("전체 일정 조회 및 검색")
     if not df_courses.empty:
@@ -781,6 +820,6 @@ with tab4:
                     st.success("비밀번호가 성공적으로 변경되었습니다.")
 
         st.markdown("---")
-        if st.button("🔒 로그아웃"):
+        if st.button("🔒 관리자 권한 해제"):
             st.session_state.authenticated = False
             st.rerun()

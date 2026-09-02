@@ -11,6 +11,19 @@ st.set_page_config(
 # =========================================================
 # 🔒 구글 OAuth 로그인 & 이메일 화이트리스트 접근 제어
 # =========================================================
+# Secrets 설정 확인
+try:
+    client_id = st.secrets["GOOGLE_CLIENT_ID"]
+    client_secret = st.secrets["GOOGLE_CLIENT_SECRET"]
+    redirect_uri = st.secrets["REDIRECT_URI"]
+    allowed_emails_str = st.secrets.get("ALLOWED_EMAILS", "")
+except Exception:
+    st.error(
+        "Secrets 설정이 올바르지 않습니다. Streamlit Settings -> Secrets를"
+        " 확인해주세요."
+    )
+    st.stop()
+
 if not st.user.is_logged_in:
     st.title("🔒 로그인 필요")
     st.info(
@@ -19,17 +32,13 @@ if not st.user.is_logged_in:
     )
     if st.button("Google 계정으로 로그인", type="primary"):
         st.login("google")
-    st.stop()  # 로그인 전 이하 코드 실행 차단
+    st.stop()
 
 user_email = st.user.email
-
-# Secrets에 등록된 허용 이메일 목록 가져오기
-allowed_emails_str = st.secrets.get("ALLOWED_EMAILS", "")
 allowed_emails = [
     e.strip().lower() for e in allowed_emails_str.split(",") if e.strip()
 ]
 
-# 화이트리스트 체크
 if user_email.lower() not in allowed_emails:
     st.error(
         f"⛔ 접근 권한이 없습니다. (현재 계정: {user_email})\n\n시스템"
@@ -37,7 +46,7 @@ if user_email.lower() not in allowed_emails:
     )
     if st.button("로그아웃"):
         st.logout()
-    st.stop()  # 허용되지 않은 계정 차단
+    st.stop()
 
 # 상단 로그인 정보 표시
 col_user, col_logout = st.columns([8, 2])

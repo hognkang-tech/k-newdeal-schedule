@@ -11,20 +11,13 @@ st.set_page_config(
 # =========================================================
 # 🔒 구글 OAuth 로그인 & 이메일 화이트리스트 접근 제어
 # =========================================================
-# Secrets 설정 확인
+# Streamlit st.user 인증 상태 점검
 try:
-    client_id = st.secrets["GOOGLE_CLIENT_ID"]
-    client_secret = st.secrets["GOOGLE_CLIENT_SECRET"]
-    redirect_uri = st.secrets["REDIRECT_URI"]
-    allowed_emails_str = st.secrets.get("ALLOWED_EMAILS", "")
+    is_logged_in = getattr(st.user, "is_logged_in", False)
 except Exception:
-    st.error(
-        "Secrets 설정이 올바르지 않습니다. Streamlit Settings -> Secrets를"
-        " 확인해주세요."
-    )
-    st.stop()
+    is_logged_in = False
 
-if not st.user.is_logged_in:
+if not is_logged_in:
     st.title("🔒 로그인 필요")
     st.info(
         "K-뉴딜 커리어 일정 관리 시스템 접속을 위해 Google 계정으로"
@@ -34,7 +27,11 @@ if not st.user.is_logged_in:
         st.login("google")
     st.stop()
 
-user_email = st.user.email
+# 로그인 이메일 가져오기
+user_email = getattr(st.user, "email", "")
+
+# Secrets에 등록된 허용 이메일 목록 확인
+allowed_emails_str = st.secrets.get("ALLOWED_EMAILS", "")
 allowed_emails = [
     e.strip().lower() for e in allowed_emails_str.split(",") if e.strip()
 ]
@@ -207,7 +204,7 @@ def render_styled_table(df, detail_col_name="일자별 세부 시간"):
             else:
                 html_code += f"<td>{val}</td>"
         html_code += "</tr>"
-    html_code += "</tbody></table>"
+    html_code += "</tbody>mtable>"
 
     st.write(html_code, unsafe_allow_html=True)
 

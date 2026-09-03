@@ -3,76 +3,80 @@ import sqlite3
 from datetime import datetime
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="K-뉴딜 커리어 일정 관리", page_icon="📅", layout="wide"
 )
 
-# Custom CSS: 큰 카드 상자 전체 클릭 가능한 캘린더 스타일링
+# Custom CSS: 날짜 카드 상자 및 절반 크기 빨간색 버튼 스타일링
 st.markdown(
     """
     <style>
-    /* 전체 카드 상자 클릭 스타일 (A 태그 링크 카드) */
-    a.cal-card-link {
-        text-decoration: none !important;
-        color: inherit !important;
-        display: block !important;
-    }
+    /* 날짜 전체 상자 (하나의 라운드 테두리) */
     .cal-card-box {
         border: 1.5px solid #cccccc;
         background-color: #ffffff;
         border-radius: 16px;
-        padding: 8px 6px 10px 6px;
-        height: 100px;
+        padding: 8px 4px 8px 4px;
+        height: 95px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
         align-items: center;
         box-sizing: border-box;
         margin-bottom: 6px;
-        transition: all 0.2s ease-in-out;
-    }
-    .cal-card-box:hover {
-        border-color: #cc0000;
-        box-shadow: 0px 3px 8px rgba(204, 0, 0, 0.2);
-        transform: translateY(-2px);
     }
     .cal-card-box-empty {
         border: 1px solid #f0f0f0;
         background-color: #fafafa;
         border-radius: 16px;
-        height: 100px;
+        height: 95px;
         margin-bottom: 6px;
     }
     .cal-card-num {
         font-weight: bold;
-        font-size: 16px;
+        font-size: 15px;
         text-align: center;
         line-height: 1.2;
     }
     
-    /* 박스 하단 중앙 배치 빨간색 알약 배지 */
+    /* 박스 하단 중앙 배치 (가로 길이 절반 크기) 빨간색 알약 배지 */
     .cal-card-badge {
         background-color: #cc0000;
         color: #ffffff !important;
         border-radius: 20px;
-        padding: 4px 12px;
-        font-size: 12px;
+        padding: 2px 8px;
+        font-size: 11px;
         font-weight: bold;
         text-align: center;
-        width: 80%;
+        width: 50% !important;
+        min-width: 50px;
         box-sizing: border-box;
         border: none;
+        margin: 0 auto;
+        white-space: nowrap;
+    }
+    
+    /* 캘린더 내 투명 클릭 영역 오버레이 */
+    div[key^="btn_cal_"] > button {
+        background-color: transparent !important;
+        color: transparent !important;
+        border: none !important;
+        height: 95px !important;
+        margin-top: -95px !important;
+        position: relative !important;
+        z-index: 10 !important;
+        width: 100% !important;
+    }
+    div[key^="btn_cal_"] > button:hover {
+        background-color: rgba(204, 0, 0, 0.05) !important;
+        border-radius: 16px !important;
     }
     </style>
 """,
     unsafe_allow_html=True,
 )
-
-# URL Query Parameter로부터 선택한 날짜 수신 (전체 상자 클릭 이벤트 처리)
-query_params = st.query_params
-if "selected_date" in query_params:
-    st.session_state["cal_selectbox_date"] = query_params["selected_date"]
 
 # =========================================================
 # 🔒 간단한 시스템 접속 비밀번호 인증
@@ -482,7 +486,7 @@ with tab1:
 
         render_styled_table(disp_df1, detail_col_name="일자별 세부 시간")
 
-# --- 탭 2: 강의 캘린더 (큰 상자 카드 전체 클릭 방식 완벽 적용) ---
+# --- 탭 2: 강의 캘린더 (세션 유지 전체 카드 클릭 + 가로 길이 절반 알약 버튼) ---
 with tab2:
     st.subheader("강의 캘린더")
 
@@ -539,16 +543,26 @@ with tab2:
 
                     with cols[idx]:
                         if count > 0:
-                            # 100% 디자인 원안대로 하나의 상자 내부 상단 숫자 + 하단 중앙 빨간 알약 배지 전체 클릭
-                            card_html = f"""
-                            <a href="?selected_date={date_str}" target="_self" class="cal-card-link">
-                                <div class="cal-card-box">
-                                    <div class="cal-card-num"><span style="{day_color}">{day_num}</span></div>
-                                    <div class="cal-card-badge">{count}개 강좌</div>
-                                </div>
-                            </a>
-                            """
-                            st.markdown(card_html, unsafe_allow_html=True)
+                            # 카드 박스 내 상단 일자 + 하단 절반 크기 빨간 배지
+                            st.markdown(
+                                f"""
+                            <div class='cal-card-box'>
+                                <div class='cal-card-num'><span style='{day_color}'>{day_num}</span></div>
+                                <div class='cal-card-badge'>{count}개 강좌</div>
+                            </div>
+                            """,
+                                unsafe_allow_html=True,
+                            )
+                            # 카드 전체 클릭 시 로그아웃 없이 세션 안전 동기화
+                            if st.button(
+                                "select",
+                                key=f"btn_cal_{date_str}",
+                                use_container_width=True,
+                            ):
+                                st.session_state["cal_selectbox_date"] = (
+                                    date_str
+                                )
+                                st.rerun()
                         else:
                             st.markdown(
                                 f"<div class='cal-card-box'><div"

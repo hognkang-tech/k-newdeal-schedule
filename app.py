@@ -9,11 +9,9 @@ st.set_page_config(
 )
 
 # =========================================================
-# 🔒 간단한 시스템 접속 비밀번호 인증 (기본값: knew2026)
+# 🔒 간단한 시스템 접속 비밀번호 인증
 # =========================================================
-SITE_PASSWORD = st.secrets.get(
-    "SITE_PASSWORD", "knew2026"
-)  # Secrets 미설정 시 기본값 사용
+SITE_PASSWORD = st.secrets.get("SITE_PASSWORD", "knew2026")
 
 if "user_authenticated" not in st.session_state:
     st.session_state.user_authenticated = False
@@ -31,9 +29,8 @@ if not st.session_state.user_authenticated:
         else:
             st.error("비밀번호가 올바르지 않습니다. 다시 확인해 주세요.")
 
-    st.stop()  # 로그인 전 이하 코드 실행 차단
+    st.stop()
 
-# 로그인 성공 시 상단에 사용자 안내 및 로그아웃 버튼 표시
 col_user, col_logout = st.columns([8, 2])
 with col_user:
     st.success("✅ K-뉴딜 일정 관리 시스템에 로그인되었습니다.")
@@ -443,7 +440,7 @@ with tab3:
         st.info("기록된 로그가 없습니다.")
     conn.close()
 
-# --- 탭 4: DB 데이터 관리/수정 ---
+# --- 탭 4: DB 데이터 관리/수정 (검색 및 드롭다운+직접입력 완비) ---
 with tab4:
     st.subheader("DB 데이터 관리/수정")
 
@@ -474,272 +471,437 @@ with tab4:
 
         if manage_mode == "1. 강좌 수정/삭제 및 세부시간 관리":
             if not df_courses.empty:
-                course_options = {
-                    f"ID {row['id']} | {row['course_name']} ({row['degree']},"
-                    f" {row['instructor']})": row["id"]
-                    for _, row in df_courses.iterrows()
-                }
-                selected_label = st.selectbox(
-                    "수정/삭제할 강좌를 선택하세요:",
-                    list(course_options.keys()),
-                )
-                selected_id = course_options[selected_label]
+                st.markdown("#### 🔍 수정할 강좌 검색 및 선택")
 
-                conn = get_connection()
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT group_name, region, course_name, degree, period,"
-                    " location, instructor, total_hours FROM courses WHERE id"
-                    " = ?",
-                    (selected_id,),
+                # 강사명 / 과목명 빠른 검색 입력 필드
+                search_kw = st.text_input(
+                    "🔎 강사명, 과목명 또는 그룹명으로 검색하세요:",
+                    placeholder="예: 이성의, 중장비, 충청 등",
                 )
-                c_data = cursor.fetchone()
-                conn.close()
 
-                if c_data:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.markdown("### 📝 강좌 기본 정보 수정")
-                        edit_group = st.text_input(
-                            "그룹명", value=c_data[0] or ""
-                        )
-                        edit_region = st.text_input(
-                            "지역/권역", value=c_data[1] or ""
-                        )
-                        edit_course = st.text_input(
-                            "과목명", value=c_data[2] or ""
-                        )
-                        degrees = [
-                            "삼성 1차",
-                            "삼성 2차",
-                            "삼성 3차",
-                            "삼성 4차",
-                            "롯데",
-                            "한화",
+                filtered_c_df = df_courses.copy()
+                if search_kw.strip():
+                    kw = search_kw.strip().lower()
+                    filtered_c_df = filtered_c_df[
+                        filtered_c_df["instructor"].str.lower().str.contains(kw)
+                        | filtered_c_df["course_name"]
+                        .str.lower()
+                        .str.contains(kw)
+                        | filtered_c_df["group_name"]
+                        .str.lower()
+                        .str.contains(kw)
+                    ]
+
+                if filtered_c_df.empty:
+                    st.warning("검색 조건에 해당되는 강좌가 없습니다.")
+                else:
+                    course_options = {
+                        f"ID {row['id']} | 강사: {row['instructor']} | 과목:"
+                        f" {row['course_name']} ({row['degree']}, {row['region']})": row[
+                            "id"
                         ]
-                        deg_idx = (
-                            degrees.index(c_data[3])
-                            if c_data[3] in degrees
-                            else 0
-                        )
-                        edit_degree = st.selectbox(
-                            "차수", degrees, index=deg_idx
-                        )
-                        edit_period = st.text_input(
-                            "전체 기간", value=c_data[4] or ""
-                        )
-                        edit_location = st.text_input(
-                            "교육장소/주소", value=c_data[5] or ""
-                        )
-                        edit_instructor = st.text_input(
-                            "담당강사", value=c_data[6] or ""
-                        )
-                        st.info(f"총 강의시간(자동합산): {c_data[7]:.0f}시간")
+                        for _, row in filtered_c_df.iterrows()
+                    }
+                    selected_label = st.selectbox(
+                        f"수정/삭제할 강좌를 선택하세요 (총 {len(course_options)}건):",
+                        list(course_options.keys()),
+                    )
+                    selected_id = course_options[selected_label]
 
-                        col_btn1, col_btn2 = st.columns(2)
-                        with col_btn1:
-                            if st.button("💾 강좌 정보 저장", type="primary"):
-                                conn = get_connection()
-                                cursor = conn.cursor()
-                                cursor.execute(
-                                    """
-                                    UPDATE courses SET group_name=?, region=?, course_name=?, degree=?, period=?, location=?, instructor=?
-                                    WHERE id=?
-                                """,
-                                    (
-                                        edit_group,
-                                        edit_region,
-                                        edit_course,
-                                        edit_degree,
-                                        edit_period,
-                                        edit_location,
-                                        edit_instructor,
-                                        selected_id,
-                                    ),
-                                )
-                                conn.commit()
-                                conn.close()
-                                log_audit_event(
-                                    "강좌정보수정",
-                                    selected_id,
-                                    f"과목: {edit_course}, 강사:"
-                                    f" {edit_instructor}",
-                                )
-                                st.success("강좌 정보가 성공적으로 수정되었습니다.")
-                                st.rerun()
+                    conn = get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT group_name, region, course_name, degree, period,"
+                        " location, instructor, total_hours FROM courses WHERE"
+                        " id = ?",
+                        (selected_id,),
+                    )
+                    c_data = cursor.fetchone()
+                    conn.close()
 
-                        with col_btn2:
-                            if st.button("🗑️ 강좌 완전 삭제"):
-                                conn = get_connection()
-                                cursor = conn.cursor()
-                                cursor.execute(
-                                    "DELETE FROM courses WHERE id=?",
-                                    (selected_id,),
-                                )
-                                cursor.execute(
-                                    "DELETE FROM course_sessions WHERE"
-                                    " course_id=?",
-                                    (selected_id,),
-                                )
-                                conn.commit()
-                                conn.close()
-                                log_audit_event(
-                                    "강좌삭제",
-                                    selected_id,
-                                    f"강좌 ID {selected_id} 삭제 완료",
-                                )
-                                st.success("강좌가 완전히 삭제되었습니다.")
-                                st.rerun()
+                    if c_data:
+                        # 드롭다운용 기존 목록 가나다 정렬
+                        existing_groups = sorted([
+                            str(x)
+                            for x in df_courses["group_name"].dropna().unique()
+                            if x
+                        ])
+                        existing_regions = sorted([
+                            str(x)
+                            for x in df_courses["region"].dropna().unique()
+                            if x
+                        ])
+                        existing_degrees = sorted([
+                            str(x)
+                            for x in df_courses["degree"].dropna().unique()
+                            if x
+                        ])
+                        existing_locations = sorted([
+                            str(x)
+                            for x in df_courses["location"].dropna().unique()
+                            if x
+                        ])
+                        existing_instructors = sorted([
+                            str(x)
+                            for x in df_courses["instructor"].dropna().unique()
+                            if x
+                        ])
 
-                    with col2:
-                        st.markdown("### ⏱️ 일자별 세부시간 개별 관리")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.markdown("### 📝 강좌 기본 정보 수정")
 
-                        conn = get_connection()
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            "SELECT id, session_date, start_time, end_time,"
-                            " hours FROM course_sessions WHERE course_id = ?"
-                            " ORDER BY session_date",
-                            (selected_id,),
-                        )
-                        sessions = cursor.fetchall()
-                        conn.close()
+                            # 1) 그룹명 (드롭다운 + 직접 입력)
+                            curr_group = c_data[0] or ""
+                            group_opts = (
+                                [curr_group]
+                                + [g for g in existing_groups if g != curr_group]
+                                + ["[직접 입력]"]
+                            )
+                            sel_group = st.selectbox("그룹명 선택", group_opts)
+                            edit_group = (
+                                st.text_input(
+                                    "그룹명 직접 입력", value=curr_group
+                                )
+                                if sel_group == "[직접 입력]"
+                                else sel_group
+                            )
 
-                        if sessions:
-                            sess_options = {
-                                f"{s[1]} | {s[2]}~{s[3]} ({s[4]:.1f}시간)": s[
-                                    0
+                            # 2) 지역/권역 (드롭다운 + 직접 입력)
+                            curr_region = c_data[1] or ""
+                            region_opts = (
+                                [curr_region]
+                                + [
+                                    r
+                                    for r in existing_regions
+                                    if r != curr_region
                                 ]
-                                for s in sessions
-                            }
-                            sel_sess_label = st.selectbox(
-                                "등록된 세부일정 선택 (수정/삭제용):",
-                                list(sess_options.keys()),
+                                + ["[직접 입력]"]
                             )
-                            sel_sess_id = sess_options[sel_sess_label]
-
-                            curr_sess = [
-                                s for s in sessions if s[0] == sel_sess_id
-                            ][0]
-                        else:
-                            sel_sess_id = None
-                            curr_sess = (None, "2026-10-06", "09:00", "18:00")
-
-                        st.markdown("---")
-                        st.write("#### 세부 날짜 및 시간 입력/수정")
-                        new_s_date = st.date_input(
-                            "강의 날짜",
-                            value=datetime.strptime(
-                                curr_sess[1], "%Y-%m-%d"
-                            ).date()
-                            if curr_sess[0]
-                            else datetime.now().date(),
-                        )
-                        col_t1, col_t2 = st.columns(2)
-                        with col_t1:
-                            new_s_time = st.time_input(
-                                "시작 시간",
-                                value=datetime.strptime(
-                                    curr_sess[2], "%H:%M"
-                                ).time()
-                                if curr_sess[0]
-                                else datetime.strptime("09:00", "%H:%M").time(),
+                            sel_region = st.selectbox(
+                                "지역/권역 선택", region_opts
                             )
-                        with col_t2:
-                            new_e_time = st.time_input(
-                                "종료 시간",
-                                value=datetime.strptime(
-                                    curr_sess[3], "%H:%M"
-                                ).time()
-                                if curr_sess[0]
-                                else datetime.strptime("18:00", "%H:%M").time(),
-                            )
-
-                        s_time_str = new_s_time.strftime("%H:%M")
-                        e_time_str = new_e_time.strftime("%H:%M")
-                        s_date_str = new_s_date.strftime("%Y-%m-%d")
-
-                        col_s_btn1, col_s_btn2, col_s_btn3 = st.columns(3)
-                        with col_s_btn1:
-                            if st.button("➕ 신규 일자 추가"):
-                                hours = calculate_session_hours(
-                                    s_time_str, e_time_str
+                            edit_region = (
+                                st.text_input(
+                                    "지역/권역 직접 입력", value=curr_region
                                 )
-                                conn = get_connection()
-                                cursor = conn.cursor()
-                                cursor.execute(
-                                    "INSERT INTO course_sessions (course_id,"
-                                    " session_date, start_time, end_time,"
-                                    " hours) VALUES (?, ?, ?, ?, ?)",
-                                    (
+                                if sel_region == "[직접 입력]"
+                                else sel_region
+                            )
+
+                            # 3) 과목명 (직접 수정)
+                            edit_course = st.text_input(
+                                "과목명", value=c_data[2] or ""
+                            )
+
+                            # 4) 차수 (드롭다운 + 직접 입력)
+                            curr_degree = c_data[3] or ""
+                            deg_opts = (
+                                [curr_degree]
+                                + [
+                                    d
+                                    for d in existing_degrees
+                                    if d != curr_degree
+                                ]
+                                + ["[직접 입력]"]
+                            )
+                            sel_degree = st.selectbox("차수 선택", deg_opts)
+                            edit_degree = (
+                                st.text_input("차수 직접 입력", value=curr_degree)
+                                if sel_degree == "[직접 입력]"
+                                else sel_degree
+                            )
+
+                            # 5) 전체 기간
+                            edit_period = st.text_input(
+                                "전체 기간", value=c_data[4] or ""
+                            )
+
+                            # 6) 교육장소/주소 (드롭다운 + 직접 입력)
+                            curr_location = c_data[5] or ""
+                            loc_opts = (
+                                [curr_location]
+                                + [
+                                    l
+                                    for l in existing_locations
+                                    if l != curr_location
+                                ]
+                                + ["[직접 입력]"]
+                            )
+                            sel_location = st.selectbox(
+                                "교육장소/주소 선택", loc_opts
+                            )
+                            edit_location = (
+                                st.text_input(
+                                    "교육장소/주소 직접 입력",
+                                    value=curr_location,
+                                )
+                                if sel_location == "[직접 입력]"
+                                else sel_location
+                            )
+
+                            # 7) 담당강사 (드롭다운 + 직접 입력)
+                            curr_instructor = c_data[6] or ""
+                            inst_opts = (
+                                [curr_instructor]
+                                + [
+                                    i
+                                    for i in existing_instructors
+                                    if i != curr_instructor
+                                ]
+                                + ["[직접 입력]"]
+                            )
+                            sel_instructor = st.selectbox(
+                                "담당강사 선택", inst_opts
+                            )
+                            edit_instructor = (
+                                st.text_input(
+                                    "담당강사 직접 입력",
+                                    value=curr_instructor,
+                                )
+                                if sel_instructor == "[직접 입력]"
+                                else sel_instructor
+                            )
+
+                            st.info(
+                                f"총 강의시간(자동합산): {c_data[7]:.0f}시간"
+                            )
+
+                            col_btn1, col_btn2 = st.columns(2)
+                            with col_btn1:
+                                if st.button(
+                                    "💾 강좌 정보 저장", type="primary"
+                                ):
+                                    conn = get_connection()
+                                    cursor = conn.cursor()
+                                    cursor.execute(
+                                        """
+                                        UPDATE courses SET group_name=?, region=?, course_name=?, degree=?, period=?, location=?, instructor=?
+                                        WHERE id=?
+                                    """,
+                                        (
+                                            edit_group,
+                                            edit_region,
+                                            edit_course,
+                                            edit_degree,
+                                            edit_period,
+                                            edit_location,
+                                            edit_instructor,
+                                            selected_id,
+                                        ),
+                                    )
+                                    conn.commit()
+                                    conn.close()
+                                    log_audit_event(
+                                        "강좌정보수정",
                                         selected_id,
-                                        s_date_str,
-                                        s_time_str,
-                                        e_time_str,
-                                        hours,
-                                    ),
-                                )
-                                conn.commit()
-                                conn.close()
-                                recalculate_course_total_hours(selected_id)
-                                log_audit_event(
-                                    "세부일정추가",
-                                    selected_id,
-                                    f"날짜: {s_date_str}, 시간:"
-                                    f" {s_time_str}~{e_time_str}",
-                                )
-                                st.success("새로운 세부일정이 추가되었습니다.")
-                                st.rerun()
+                                        f"과목: {edit_course}, 강사:"
+                                        f" {edit_instructor}",
+                                    )
+                                    st.success(
+                                        "강좌 정보가 성공적으로 수정되었습니다."
+                                    )
+                                    st.rerun()
 
-                        with col_s_btn2:
-                            if sel_sess_id and st.button("✏️ 선택 일자 수정"):
-                                hours = calculate_session_hours(
-                                    s_time_str, e_time_str
-                                )
-                                conn = get_connection()
-                                cursor = conn.cursor()
-                                cursor.execute(
-                                    "UPDATE course_sessions SET session_date=?,"
-                                    " start_time=?, end_time=?, hours=? WHERE"
-                                    " id=?",
-                                    (
-                                        s_date_str,
-                                        s_time_str,
-                                        e_time_str,
-                                        hours,
-                                        sel_sess_id,
-                                    ),
-                                )
-                                conn.commit()
-                                conn.close()
-                                recalculate_course_total_hours(selected_id)
-                                log_audit_event(
-                                    "세부일정수정",
-                                    selected_id,
-                                    f"날짜: {s_date_str}, 시간:"
-                                    f" {s_time_str}~{e_time_str}",
-                                )
-                                st.success("세부일정이 수정되었습니다.")
-                                st.rerun()
+                            with col_btn2:
+                                if st.button("🗑️ 강좌 완전 삭제"):
+                                    conn = get_connection()
+                                    cursor = conn.cursor()
+                                    cursor.execute(
+                                        "DELETE FROM courses WHERE id=?",
+                                        (selected_id,),
+                                    )
+                                    cursor.execute(
+                                        "DELETE FROM course_sessions WHERE"
+                                        " course_id=?",
+                                        (selected_id,),
+                                    )
+                                    conn.commit()
+                                    conn.close()
+                                    log_audit_event(
+                                        "강좌삭제",
+                                        selected_id,
+                                        f"강좌 ID {selected_id} 삭제 완료",
+                                    )
+                                    st.success(
+                                        "강좌가 완전히 삭제되었습니다."
+                                    )
+                                    st.rerun()
 
-                        with col_s_btn3:
-                            if sel_sess_id and st.button("🗑️ 선택 일자 삭제"):
-                                conn = get_connection()
-                                cursor = conn.cursor()
-                                cursor.execute(
-                                    "DELETE FROM course_sessions WHERE id=?",
-                                    (sel_sess_id,),
+                        with col2:
+                            st.markdown("### ⏱️ 일자별 세부시간 개별 관리")
+
+                            conn = get_connection()
+                            cursor = conn.cursor()
+                            cursor.execute(
+                                "SELECT id, session_date, start_time, end_time,"
+                                " hours FROM course_sessions WHERE course_id ="
+                                " ? ORDER BY session_date",
+                                (selected_id,),
+                            )
+                            sessions = cursor.fetchall()
+                            conn.close()
+
+                            if sessions:
+                                sess_options = {
+                                    f"{s[1]} | {s[2]}~{s[3]} ({s[4]:.1f}시간)": s[
+                                        0
+                                    ]
+                                    for s in sessions
+                                }
+                                sel_sess_label = st.selectbox(
+                                    "등록된 세부일정 선택 (수정/삭제용):",
+                                    list(sess_options.keys()),
                                 )
-                                conn.commit()
-                                conn.close()
-                                recalculate_course_total_hours(selected_id)
-                                log_audit_event(
-                                    "세부일정삭제",
-                                    selected_id,
-                                    f"세션 ID {sel_sess_id} 삭제",
+                                sel_sess_id = sess_options[sel_sess_label]
+
+                                curr_sess = [
+                                    s for s in sessions if s[0] == sel_sess_id
+                                ][0]
+                            else:
+                                sel_sess_id = None
+                                curr_sess = (
+                                    None,
+                                    "2026-10-06",
+                                    "09:00",
+                                    "18:00",
                                 )
-                                st.success("선택한 일자가 삭제되었습니다.")
-                                st.rerun()
+
+                            st.markdown("---")
+                            st.write("#### 세부 날짜 및 시간 입력/수정")
+                            new_s_date = st.date_input(
+                                "강의 날짜",
+                                value=datetime.strptime(
+                                    curr_sess[1], "%Y-%m-%d"
+                                ).date()
+                                if curr_sess[0]
+                                else datetime.now().date(),
+                            )
+                            col_t1, col_t2 = st.columns(2)
+                            with col_t1:
+                                new_s_time = st.time_input(
+                                    "시작 시간",
+                                    value=datetime.strptime(
+                                        curr_sess[2], "%H:%M"
+                                    ).time()
+                                    if curr_sess[0]
+                                    else datetime.strptime(
+                                        "09:00", "%H:%M"
+                                    ).time(),
+                                )
+                            with col_t2:
+                                new_e_time = st.time_input(
+                                    "종료 시간",
+                                    value=datetime.strptime(
+                                        curr_sess[3], "%H:%M"
+                                    ).time()
+                                    if curr_sess[0]
+                                    else datetime.strptime(
+                                        "18:00", "%H:%M"
+                                    ).time(),
+                                )
+
+                            s_time_str = new_s_time.strftime("%H:%M")
+                            e_time_str = new_e_time.strftime("%H:%M")
+                            s_date_str = new_s_date.strftime("%Y-%m-%d")
+
+                            col_s_btn1, col_s_btn2, col_s_btn3 = st.columns(3)
+                            with col_s_btn1:
+                                if st.button("➕ 신규 일자 추가"):
+                                    hours = calculate_session_hours(
+                                        s_time_str, e_time_str
+                                    )
+                                    conn = get_connection()
+                                    cursor = conn.cursor()
+                                    cursor.execute(
+                                        "INSERT INTO course_sessions"
+                                        " (course_id, session_date, start_time,"
+                                        " end_time, hours) VALUES (?, ?, ?, ?,"
+                                        " ?)",
+                                        (
+                                            selected_id,
+                                            s_date_str,
+                                            s_time_str,
+                                            e_time_str,
+                                            hours,
+                                        ),
+                                    )
+                                    conn.commit()
+                                    conn.close()
+                                    recalculate_course_total_hours(
+                                        selected_id
+                                    )
+                                    log_audit_event(
+                                        "세부일정추가",
+                                        selected_id,
+                                        f"날짜: {s_date_str}, 시간:"
+                                        f" {s_time_str}~{e_time_str}",
+                                    )
+                                    st.success(
+                                        "새로운 세부일정이 추가되었습니다."
+                                    )
+                                    st.rerun()
+
+                            with col_s_btn2:
+                                if sel_sess_id and st.button(
+                                    "✏️ 선택 일자 수정"
+                                ):
+                                    hours = calculate_session_hours(
+                                        s_time_str, e_time_str
+                                    )
+                                    conn = get_connection()
+                                    cursor = conn.cursor()
+                                    cursor.execute(
+                                        "UPDATE course_sessions SET"
+                                        " session_date=?, start_time=?,"
+                                        " end_time=?, hours=? WHERE id=?",
+                                        (
+                                            s_date_str,
+                                            s_time_str,
+                                            e_time_str,
+                                            hours,
+                                            sel_sess_id,
+                                        ),
+                                    )
+                                    conn.commit()
+                                    conn.close()
+                                    recalculate_course_total_hours(
+                                        selected_id
+                                    )
+                                    log_audit_event(
+                                        "세부일정수정",
+                                        selected_id,
+                                        f"날짜: {s_date_str}, 시간:"
+                                        f" {s_time_str}~{e_time_str}",
+                                    )
+                                    st.success("세부일정이 수정되었습니다.")
+                                    st.rerun()
+
+                            with col_s_btn3:
+                                if sel_sess_id and st.button(
+                                    "🗑️ 선택 일자 삭제"
+                                ):
+                                    conn = get_connection()
+                                    cursor = conn.cursor()
+                                    cursor.execute(
+                                        "DELETE FROM course_sessions WHERE"
+                                        " id=?",
+                                        (sel_sess_id,),
+                                    )
+                                    conn.commit()
+                                    conn.close()
+                                    recalculate_course_total_hours(
+                                        selected_id
+                                    )
+                                    log_audit_event(
+                                        "세부일정삭제",
+                                        selected_id,
+                                        f"세션 ID {sel_sess_id} 삭제",
+                                    )
+                                    st.success(
+                                        "선택한 일자가 삭제되었습니다."
+                                    )
+                                    st.rerun()
 
         elif manage_mode == "2. 신규 강좌 추가":
             st.markdown("### ➕ 신규 강좌 추가")

@@ -485,7 +485,7 @@ with tab1:
 
         render_styled_table(disp_df1, detail_col_name="일자별 세부 시간")
 
-# --- 탭 2: 강의 캘린더 (상세 목록 스크롤 제거 후 전체 표출) ---
+# --- 탭 2: 강의 캘린더 ---
 with tab2:
     st.subheader("강의 캘린더")
 
@@ -625,7 +625,6 @@ with tab2:
                     "교육장소/주소",
                 ]
 
-                # 스크롤 없이 전체 목록 그대로 표출 (styled table)
                 render_styled_table(disp_df, detail_col_name="")
         else:
             st.info(f"{year}년 {month}월에는 개설된 강의가 없습니다.")
@@ -643,7 +642,7 @@ with tab3:
         st.info("기록된 로그가 없습니다.")
     conn.close()
 
-# --- 탭 4: DB 데이터 관리/수정 (세부 일정 한눈에 전체 표시) ---
+# --- 탭 4: DB 데이터 관리/수정 ---
 with tab4:
     st.subheader("DB 데이터 관리/수정")
 
@@ -961,21 +960,8 @@ with tab4:
                             sessions = cursor.fetchall()
                             conn.close()
 
-                            # 등록된 세부 일정 전체 목록 표출
                             st.write("#### 📌 등록된 세부 일정 전체 목록")
                             if sessions:
-                                sess_df = pd.DataFrame(
-                                    sessions,
-                                    columns=[
-                                        "세션ID",
-                                        "강의날짜",
-                                        "시작시간",
-                                        "종료시간",
-                                        "시간(h)",
-                                    ],
-                                )
-
-                                # 드롭다운 대신 전체 세부일정 리스트 표시 및 선택 버튼 연결
                                 sel_sess_id = st.session_state.get(
                                     f"edit_sess_id_{selected_id}", None
                                 )
@@ -996,13 +982,18 @@ with tab4:
                                             ] = s_id
                                             st.rerun()
 
-                                if sel_sess_id:
-                                    curr_sess = [
-                                        s for s in sessions if s[0] == sel_sess_id
-                                    ][0]
+                                # 안전한 세션 ID 참조 로직 (IndexError 예외 완벽 방지)
+                                matched_sessions = [
+                                    s for s in sessions if s[0] == sel_sess_id
+                                ]
+                                if matched_sessions:
+                                    curr_sess = matched_sessions[0]
                                 else:
                                     curr_sess = sessions[0]
                                     sel_sess_id = curr_sess[0]
+                                    st.session_state[
+                                        f"edit_sess_id_{selected_id}"
+                                    ] = sel_sess_id
                             else:
                                 sel_sess_id = None
                                 curr_sess = (
@@ -1144,6 +1135,16 @@ with tab4:
                                         selected_id,
                                         f"세션 ID {sel_sess_id} 삭제",
                                     )
+
+                                    # 삭제 후 세션 상태의 선택 ID 초기화하여 오류 방지
+                                    if (
+                                        f"edit_sess_id_{selected_id}"
+                                        in st.session_state
+                                    ):
+                                        del st.session_state[
+                                            f"edit_sess_id_{selected_id}"
+                                        ]
+
                                     st.session_state.flash_msg = (
                                         "✅ 선택한 세부일정이 성공적으로"
                                         " 삭제되었습니다."

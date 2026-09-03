@@ -8,11 +8,16 @@ st.set_page_config(
     page_title="K-뉴딜 커리어 일정 관리", page_icon="📅", layout="wide"
 )
 
-# Custom CSS: 사진 속 형태와 100% 동일한 날짜 카드 및 내부 빨간색 알약 배지 스타일링
+# Custom CSS: 큰 카드 상자 전체 클릭 가능한 캘린더 스타일링
 st.markdown(
     """
     <style>
-    /* 날짜 전체 상자 (하나의 라운드 테두리) */
+    /* 전체 카드 상자 클릭 스타일 (A 태그 링크 카드) */
+    a.cal-card-link {
+        text-decoration: none !important;
+        color: inherit !important;
+        display: block !important;
+    }
     .cal-card-box {
         border: 1.5px solid #cccccc;
         background-color: #ffffff;
@@ -25,6 +30,12 @@ st.markdown(
         align-items: center;
         box-sizing: border-box;
         margin-bottom: 6px;
+        transition: all 0.2s ease-in-out;
+    }
+    .cal-card-box:hover {
+        border-color: #cc0000;
+        box-shadow: 0px 3px 8px rgba(204, 0, 0, 0.2);
+        transform: translateY(-2px);
     }
     .cal-card-box-empty {
         border: 1px solid #f0f0f0;
@@ -40,43 +51,28 @@ st.markdown(
         line-height: 1.2;
     }
     
-    /* 카드 내부 하단 중앙 빨간색 버튼 커스텀 */
-    div[key^="btn_cal_"] {
-        width: 100% !important;
-        display: flex !important;
-        justify-content: center !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-    div[key^="btn_cal_"] > button {
-        background-color: #cc0000 !important;
+    /* 박스 하단 중앙 배치 빨간색 알약 배지 */
+    .cal-card-badge {
+        background-color: #cc0000;
         color: #ffffff !important;
-        border-radius: 20px !important;
-        padding: 3px 12px !important;
-        font-size: 12px !important;
-        font-weight: bold !important;
-        border: none !important;
-        outline: none !important;
-        box-shadow: none !important;
-        min-height: 26px !important;
-        height: 26px !important;
-        line-height: 1 !important;
-        width: 85% !important;
-        margin: 0 auto !important;
-    }
-    div[key^="btn_cal_"] > button:hover {
-        background-color: #990000 !important;
-        color: #ffffff !important;
-        border: none !important;
-    }
-    div[key^="btn_cal_"] > button:focus {
-        border: none !important;
-        box-shadow: none !important;
+        border-radius: 20px;
+        padding: 4px 12px;
+        font-size: 12px;
+        font-weight: bold;
+        text-align: center;
+        width: 80%;
+        box-sizing: border-box;
+        border: none;
     }
     </style>
 """,
     unsafe_allow_html=True,
 )
+
+# URL Query Parameter로부터 선택한 날짜 수신 (전체 상자 클릭 이벤트 처리)
+query_params = st.query_params
+if "selected_date" in query_params:
+    st.session_state["cal_selectbox_date"] = query_params["selected_date"]
 
 # =========================================================
 # 🔒 간단한 시스템 접속 비밀번호 인증
@@ -114,10 +110,62 @@ st.markdown("---")
 
 
 # =========================================================
-# 메인 데이터베이스 및 유틸리티 함수
+# 메인 데이터베이스 및 보존/유지 유틸리티 함수
 # =========================================================
 def get_connection():
     return sqlite3.connect("schedule_db.db")
+
+
+def init_db_tables():
+    """앱 업데이트 시에도 데이터가 유실되지 않도록 테이블 안전 보존 및 생성"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS courses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        group_name TEXT,
+        region TEXT,
+        course_name TEXT,
+        degree TEXT,
+        period TEXT,
+        total_hours REAL,
+        location TEXT,
+        instructor TEXT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS course_sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        course_id INTEGER,
+        session_date TEXT,
+        start_time TEXT,
+        end_time TEXT,
+        hours REAL,
+        FOREIGN KEY(course_id) REFERENCES courses(id)
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT,
+        action_type TEXT,
+        target_id INTEGER,
+        details TEXT
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS system_config (
+        key TEXT PRIMARY KEY,
+        val TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
 
 
 def update_region_categories():
@@ -177,6 +225,7 @@ def update_region_categories():
 
 
 try:
+    init_db_tables()
     update_region_categories()
 except Exception:
     pass
@@ -201,15 +250,6 @@ def calculate_session_hours(start_str, end_str):
 def log_audit_event(action_type, target_id, details):
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS audit_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT,
-        action_type TEXT,
-        target_id INTEGER,
-        details TEXT
-    )
-    """)
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cursor.execute(
         """
@@ -229,10 +269,6 @@ if "authenticated" not in st.session_state:
 def get_current_password():
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        "CREATE TABLE IF NOT EXISTS system_config (key TEXT PRIMARY KEY, val"
-        " TEXT)"
-    )
     cursor.execute(
         "SELECT val FROM system_config WHERE key = 'admin_password'"
     )
@@ -446,7 +482,7 @@ with tab1:
 
         render_styled_table(disp_df1, detail_col_name="일자별 세부 시간")
 
-# --- 탭 2: 강의 캘린더 (사진과 100% 동일한 내장형 날짜 카드 디자인 적용) ---
+# --- 탭 2: 강의 캘린더 (큰 상자 카드 전체 클릭 방식 완벽 적용) ---
 with tab2:
     st.subheader("강의 캘린더")
 
@@ -503,25 +539,17 @@ with tab2:
 
                     with cols[idx]:
                         if count > 0:
-                            # 1. 하나의 완벽한 카드 상자 시작
-                            st.markdown(
-                                f"<div class='cal-card-box'><div"
-                                f" class='cal-card-num'><span"
-                                f" style='{day_color}'>{day_num}</span></div>",
-                                unsafe_allow_html=True,
-                            )
-                            # 2. 카드 내부 하단 중앙에 들어가는 빨간색 버튼
-                            if st.button(
-                                f"{count}개 강좌", key=f"btn_cal_{date_str}"
-                            ):
-                                st.session_state["cal_selectbox_date"] = (
-                                    date_str
-                                )
-                                st.rerun()
-                            # 3. 카드 상자 닫기
-                            st.markdown("</div>", unsafe_allow_html=True)
+                            # 100% 디자인 원안대로 하나의 상자 내부 상단 숫자 + 하단 중앙 빨간 알약 배지 전체 클릭
+                            card_html = f"""
+                            <a href="?selected_date={date_str}" target="_self" class="cal-card-link">
+                                <div class="cal-card-box">
+                                    <div class="cal-card-num"><span style="{day_color}">{day_num}</span></div>
+                                    <div class="cal-card-badge">{count}개 강좌</div>
+                                </div>
+                            </a>
+                            """
+                            st.markdown(card_html, unsafe_allow_html=True)
                         else:
-                            # 강의 없는 날짜 (상자만 표출)
                             st.markdown(
                                 f"<div class='cal-card-box'><div"
                                 f" class='cal-card-num'><span"

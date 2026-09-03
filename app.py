@@ -440,7 +440,7 @@ with tab3:
         st.info("기록된 로그가 없습니다.")
     conn.close()
 
-# --- 탭 4: DB 데이터 관리/수정 (검색 및 드롭다운+직접입력 완비) ---
+# --- 탭 4: DB 데이터 관리/수정 ---
 with tab4:
     st.subheader("DB 데이터 관리/수정")
 
@@ -473,7 +473,6 @@ with tab4:
             if not df_courses.empty:
                 st.markdown("#### 🔍 수정할 강좌 검색 및 선택")
 
-                # 강사명 / 과목명 빠른 검색 입력 필드
                 search_kw = st.text_input(
                     "🔎 강사명, 과목명 또는 그룹명으로 검색하세요:",
                     placeholder="예: 이성의, 중장비, 충청 등",
@@ -520,7 +519,6 @@ with tab4:
                     conn.close()
 
                     if c_data:
-                        # 드롭다운용 기존 목록 가나다 정렬
                         existing_groups = sorted([
                             str(x)
                             for x in df_courses["group_name"].dropna().unique()
@@ -551,7 +549,7 @@ with tab4:
                         with col1:
                             st.markdown("### 📝 강좌 기본 정보 수정")
 
-                            # 1) 그룹명 (드롭다운 + 직접 입력)
+                            # 1) 그룹명
                             curr_group = c_data[0] or ""
                             group_opts = (
                                 [curr_group]
@@ -567,7 +565,7 @@ with tab4:
                                 else sel_group
                             )
 
-                            # 2) 지역/권역 (드롭다운 + 직접 입력)
+                            # 2) 지역/권역
                             curr_region = c_data[1] or ""
                             region_opts = (
                                 [curr_region]
@@ -589,12 +587,12 @@ with tab4:
                                 else sel_region
                             )
 
-                            # 3) 과목명 (직접 수정)
+                            # 3) 과목명
                             edit_course = st.text_input(
                                 "과목명", value=c_data[2] or ""
                             )
 
-                            # 4) 차수 (드롭다운 + 직접 입력)
+                            # 4) 차수
                             curr_degree = c_data[3] or ""
                             deg_opts = (
                                 [curr_degree]
@@ -617,7 +615,7 @@ with tab4:
                                 "전체 기간", value=c_data[4] or ""
                             )
 
-                            # 6) 교육장소/주소 (드롭다운 + 직접 입력)
+                            # 6) 교육장소/주소
                             curr_location = c_data[5] or ""
                             loc_opts = (
                                 [curr_location]
@@ -640,7 +638,7 @@ with tab4:
                                 else sel_location
                             )
 
-                            # 7) 담당강사 (드롭다운 + 직접 입력)
+                            # 7) 담당강사
                             curr_instructor = c_data[6] or ""
                             inst_opts = (
                                 [curr_instructor]
@@ -905,20 +903,117 @@ with tab4:
 
         elif manage_mode == "2. 신규 강좌 추가":
             st.markdown("### ➕ 신규 강좌 추가")
-            add_group = st.text_input("그룹명")
-            add_region = st.text_input("지역/권역")
-            add_course = st.text_input("과목명")
-            add_degree = st.selectbox(
-                "차수 선택",
-                ["삼성 1차", "삼성 2차", "삼성 3차", "삼성 4차", "롯데", "한화"],
-            )
-            add_period = st.text_input("전체 기간")
-            add_location = st.text_input("교육장소/주소")
-            add_instructor = st.text_input("담당강사")
+
+            # 기존 DB에 존재하는 목록 추출
+            existing_groups = sorted([
+                str(x)
+                for x in df_courses["group_name"].dropna().unique()
+                if str(x).strip()
+            ]) if not df_courses.empty else []
+            existing_regions = sorted([
+                str(x)
+                for x in df_courses["region"].dropna().unique()
+                if str(x).strip()
+            ]) if not df_courses.empty else []
+            existing_courses = sorted([
+                str(x)
+                for x in df_courses["course_name"].dropna().unique()
+                if str(x).strip()
+            ]) if not df_courses.empty else []
+            existing_degrees = sorted([
+                str(x)
+                for x in df_courses["degree"].dropna().unique()
+                if str(x).strip()
+            ]) if not df_courses.empty else [
+                "삼성 1차",
+                "삼성 2차",
+                "삼성 3차",
+                "삼성 4차",
+                "롯데",
+                "한화",
+            ]
+            existing_locations = sorted([
+                str(x)
+                for x in df_courses["location"].dropna().unique()
+                if str(x).strip()
+            ]) if not df_courses.empty else []
+            existing_instructors = sorted([
+                str(x)
+                for x in df_courses["instructor"].dropna().unique()
+                if str(x).strip()
+            ]) if not df_courses.empty else []
+
+            col_a, col_b = st.columns(2)
+            with col_a:
+                # 1) 그룹명 선택/입력
+                sel_add_group = st.selectbox(
+                    "그룹명 선택", existing_groups + ["[직접 입력]"]
+                )
+                add_group = (
+                    st.text_input("그룹명 직접 입력", value="")
+                    if sel_add_group == "[직접 입력]"
+                    else sel_add_group
+                )
+
+                # 2) 지역/권역 선택/입력
+                sel_add_region = st.selectbox(
+                    "지역/권역 선택", existing_regions + ["[직접 입력]"]
+                )
+                add_region = (
+                    st.text_input("지역/권역 직접 입력", value="")
+                    if sel_add_region == "[직접 입력]"
+                    else sel_add_region
+                )
+
+                # 3) 과목명 선택/입력
+                sel_add_course = st.selectbox(
+                    "과목명 선택", existing_courses + ["[직접 입력]"]
+                )
+                add_course = (
+                    st.text_input("과목명 직접 입력", value="")
+                    if sel_add_course == "[직접 입력]"
+                    else sel_add_course
+                )
+
+                # 4) 차수 선택/입력
+                sel_add_degree = st.selectbox(
+                    "차수 선택", existing_degrees + ["[직접 입력]"]
+                )
+                add_degree = (
+                    st.text_input("차수 직접 입력", value="")
+                    if sel_add_degree == "[직접 입력]"
+                    else sel_add_degree
+                )
+
+            with col_b:
+                # 5) 전체 기간
+                add_period = st.text_input(
+                    "전체 기간 (예: 2026-10-06 ~ 2026-10-10)"
+                )
+
+                # 6) 교육장소/주소 선택/입력
+                sel_add_loc = st.selectbox(
+                    "교육장소/주소 선택", existing_locations + ["[직접 입력]"]
+                )
+                add_location = (
+                    st.text_input("교육장소/주소 직접 입력", value="")
+                    if sel_add_loc == "[직접 입력]"
+                    else sel_add_loc
+                )
+
+                # 7) 담당강사 선택/입력
+                sel_add_inst = st.selectbox(
+                    "담당강사 선택", existing_instructors + ["[직접 입력]"]
+                )
+                add_instructor = (
+                    st.text_input("담당강사 직접 입력", value="")
+                    if sel_add_inst == "[직접 입력]"
+                    else sel_add_inst
+                )
 
             if st.button("➕ 신규 강좌 저장", type="primary"):
-                if not add_course:
-                    st.error("과목명을 입력해주세요.")
+                if not add_course.strip():
+                    st.error("과목명을 입력하거나 선택해 주세요.")
                 else:
                     conn = get_connection()
                     cursor = conn.cursor()
@@ -946,8 +1041,9 @@ with tab4:
                         f"과목: {add_course}, 강사: {add_instructor}",
                     )
                     st.success(
-                        f"신규 강좌(ID: {new_id})가 등록되었습니다! '1. 강좌"
-                        " 수정/삭제' 메뉴에서 세부 시간을 등록할 수 있습니다."
+                        f"신규 강좌(ID: {new_id})가 성공적으로 등록되었습니다! '1."
+                        " 강좌 수정/삭제' 메뉴에서 세부 시간을 등록할 수"
+                        " 있습니다."
                     )
                     st.rerun()
 

@@ -8,57 +8,64 @@ st.set_page_config(
     page_title="K-뉴딜 커리어 일정 관리", page_icon="📅", layout="wide"
 )
 
-# Custom CSS: 날짜 상자 내부 완벽 포함 및 빨간색 버튼(테두리 없음, 하단 중앙) 스타일링
+# Custom CSS: 사진 속 형태와 100% 동일한 날짜 카드 및 내부 빨간색 알약 배지 스타일링
 st.markdown(
     """
     <style>
-    /* 날짜 전체 상자 (HTML) */
-    .cal-day-container {
-        border: 1px solid #dcdcdc;
+    /* 날짜 전체 상자 (하나의 라운드 테두리) */
+    .cal-card-box {
+        border: 1.5px solid #cccccc;
         background-color: #ffffff;
-        border-radius: 8px;
-        padding: 8px 4px 6px 4px;
-        min-height: 85px;
+        border-radius: 16px;
+        padding: 8px 6px 10px 6px;
+        height: 100px;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
         align-items: center;
         box-sizing: border-box;
+        margin-bottom: 6px;
     }
-    .cal-day-container-empty {
+    .cal-card-box-empty {
         border: 1px solid #f0f0f0;
-        background-color: #fcfcfc;
-        border-radius: 8px;
-        min-height: 85px;
+        background-color: #fafafa;
+        border-radius: 16px;
+        height: 100px;
+        margin-bottom: 6px;
     }
-    .cal-day-num {
+    .cal-card-num {
         font-weight: bold;
-        font-size: 15px;
+        font-size: 16px;
         text-align: center;
+        line-height: 1.2;
     }
     
-    /* 상자 내부 하단 중앙 배치 버튼 */
+    /* 카드 내부 하단 중앙 빨간색 버튼 커스텀 */
     div[key^="btn_cal_"] {
         width: 100% !important;
         display: flex !important;
         justify-content: center !important;
-        margin-top: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
     div[key^="btn_cal_"] > button {
-        background-color: #d32f2f !important;
+        background-color: #cc0000 !important;
         color: #ffffff !important;
-        border-radius: 12px !important;
-        padding: 3px 10px !important;
-        font-size: 11px !important;
+        border-radius: 20px !important;
+        padding: 3px 12px !important;
+        font-size: 12px !important;
         font-weight: bold !important;
         border: none !important;
         outline: none !important;
         box-shadow: none !important;
+        min-height: 26px !important;
+        height: 26px !important;
+        line-height: 1 !important;
         width: 85% !important;
         margin: 0 auto !important;
     }
     div[key^="btn_cal_"] > button:hover {
-        background-color: #b71c1c !important;
+        background-color: #990000 !important;
         color: #ffffff !important;
         border: none !important;
     }
@@ -439,7 +446,7 @@ with tab1:
 
         render_styled_table(disp_df1, detail_col_name="일자별 세부 시간")
 
-# --- 탭 2: 강의 캘린더 (날짜 박스 내부 완전 통합 + 테두리 없는 빨간색 배지 버튼) ---
+# --- 탭 2: 강의 캘린더 (사진과 100% 동일한 내장형 날짜 카드 디자인 적용) ---
 with tab2:
     st.subheader("강의 캘린더")
 
@@ -491,20 +498,19 @@ with tab2:
                     day_color = (
                         "color:#d32f2f;"
                         if idx == 0
-                        else ("color:#1976d2;" if idx == 6 else "")
+                        else ("color:#1976d2;" if idx == 6 else "color:#111111;")
                     )
 
                     with cols[idx]:
-                        # HTML 박스 내부 상단에 숫자 배치
-                        st.markdown(
-                            f"<div class='cal-day-container'><div"
-                            f" class='cal-day-num'><span"
-                            f" style='{day_color}'>{day_num}</span></div>",
-                            unsafe_allow_html=True,
-                        )
-
-                        # HTML 박스 내부 하단 중앙에 Streamlit 버튼 삽입
                         if count > 0:
+                            # 1. 하나의 완벽한 카드 상자 시작
+                            st.markdown(
+                                f"<div class='cal-card-box'><div"
+                                f" class='cal-card-num'><span"
+                                f" style='{day_color}'>{day_num}</span></div>",
+                                unsafe_allow_html=True,
+                            )
+                            # 2. 카드 내부 하단 중앙에 들어가는 빨간색 버튼
                             if st.button(
                                 f"{count}개 강좌", key=f"btn_cal_{date_str}"
                             ):
@@ -512,12 +518,19 @@ with tab2:
                                     date_str
                                 )
                                 st.rerun()
-
-                        # HTML 박스 닫기
-                        st.markdown("</div>", unsafe_allow_html=True)
+                            # 3. 카드 상자 닫기
+                            st.markdown("</div>", unsafe_allow_html=True)
+                        else:
+                            # 강의 없는 날짜 (상자만 표출)
+                            st.markdown(
+                                f"<div class='cal-card-box'><div"
+                                f" class='cal-card-num'><span"
+                                f" style='{day_color}'>{day_num}</span></div><div></div></div>",
+                                unsafe_allow_html=True,
+                            )
                 else:
                     cols[idx].markdown(
-                        "<div class='cal-day-container-empty'></div>",
+                        "<div class='cal-card-box-empty'></div>",
                         unsafe_allow_html=True,
                     )
 

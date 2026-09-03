@@ -1,4 +1,5 @@
 import calendar
+import os
 import sqlite3
 from datetime import datetime
 import pandas as pd
@@ -642,7 +643,7 @@ with tab3:
         st.info("기록된 로그가 없습니다.")
     conn.close()
 
-# --- 탭 4: DB 데이터 관리/수정 ---
+# --- 탭 4: DB 데이터 관리/수정 (백업/복원 원클릭 솔루션 구현) ---
 with tab4:
     st.subheader("DB 데이터 관리/수정")
 
@@ -664,6 +665,56 @@ with tab4:
                 st.error("비밀번호가 올바르지 않습니다.")
     else:
         st.success("🔒 관리자 권한 인증 완료")
+
+        # =========================================================
+        # 📦 DB 데이터 백업 및 복원 솔루션 (해결책 A)
+        # =========================================================
+        with st.expander("💾 DB 백업 및 원클릭 복원 센터", expanded=True):
+            col_b1, col_b2 = st.columns(2)
+            with col_b1:
+                st.markdown("##### 📥 현재 최신 DB 백업 저장")
+                st.caption(
+                    "웹에서 세부일정 수정 후 아래 버튼을 누르면 내 컴퓨터에 최신 DB가"
+                    " 저장됩니다."
+                )
+
+                if os.path.exists("schedule_db.db"):
+                    with open("schedule_db.db", "rb") as f:
+                        db_bytes = f.read()
+
+                    st.download_button(
+                        label="📥 현재 최신 DB 파일 다운로드",
+                        data=db_bytes,
+                        file_name=f"schedule_db_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.db",
+                        mime="application/x-sqlite3",
+                        type="primary",
+                    )
+
+            with col_b2:
+                st.markdown("##### 📤 백업 DB 파일 업로드 및 복원")
+                st.caption(
+                    "코드 업데이트로 데이터가 초기화된 경우, 백업받았던 DB 파일을"
+                    " 업로드하여 바로 복원하세요."
+                )
+
+                uploaded_db = st.file_uploader(
+                    "복원할 .db 파일 선택", type=["db", "sqlite3"]
+                )
+                if uploaded_db is not None:
+                    if st.button("🔄 이 DB 파일로 시스템 복원 실행"):
+                        try:
+                            with open("schedule_db.db", "wb") as f:
+                                f.write(uploaded_db.getbuffer())
+                            st.session_state.flash_msg = (
+                                "🎉 DB 데이터가 이전 백업 시점으로 성공적으로"
+                                " 복원되었습니다!"
+                            )
+                            st.toast("🔄 DB 복원 완료")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"DB 복원 실패: {e}")
+
+        st.markdown("---")
 
         manage_mode = st.radio(
             "작업 선택:",
@@ -982,7 +1033,6 @@ with tab4:
                                             ] = s_id
                                             st.rerun()
 
-                                # 안전한 세션 ID 참조 로직 (IndexError 예외 완벽 방지)
                                 matched_sessions = [
                                     s for s in sessions if s[0] == sel_sess_id
                                 ]
@@ -1136,7 +1186,6 @@ with tab4:
                                         f"세션 ID {sel_sess_id} 삭제",
                                     )
 
-                                    # 삭제 후 세션 상태의 선택 ID 초기화하여 오류 방지
                                     if (
                                         f"edit_sess_id_{selected_id}"
                                         in st.session_state

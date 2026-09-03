@@ -55,14 +55,12 @@ def update_region_categories():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # 1. 삼성2차 한수지 강사 -> 충청(신탄진)
     cursor.execute("""
         UPDATE courses 
         SET region = '충청(신탄진)' 
         WHERE degree = '삼성 2차' AND instructor LIKE '%한수지%'
     """)
 
-    # 2. 삼성 1차, 3차 선박제조기술자(거제) -> 경남(거제)
     cursor.execute("""
         UPDATE courses 
         SET region = '경남(거제)' 
@@ -70,7 +68,6 @@ def update_region_categories():
           AND (course_name LIKE '%선박제조기술자%' OR location LIKE '%거제%')
     """)
 
-    # 3. 롯데 과정 지역 매핑
     cursor.execute("""
         UPDATE courses 
         SET region = '서울(롯데)' 
@@ -82,14 +79,12 @@ def update_region_categories():
         WHERE group_name LIKE '%롯데%' AND (region LIKE '%영남%' OR region LIKE '%부산%' OR location LIKE '%부산%')
     """)
 
-    # 4. 한화 과정 지역 매핑
     cursor.execute("""
         UPDATE courses 
         SET region = '한화(거제)' 
         WHERE group_name LIKE '%한화%' OR location LIKE '%한화%' OR location LIKE '%거제%'
     """)
 
-    # 5. 기존 광역 지역명을 세부 지역명으로 정리
     cursor.execute(
         "UPDATE courses SET region = '충청(대전)' WHERE region = '충청'"
     )
@@ -111,7 +106,6 @@ def update_region_categories():
     conn.close()
 
 
-# 앱 실행 시 세부 지역 카테고리 자동 업데이트
 try:
     update_region_categories()
 except Exception:
@@ -382,7 +376,7 @@ with tab1:
 
         render_styled_table(disp_df1, detail_col_name="일자별 세부 시간")
 
-# --- 탭 2: 강의 캘린더 (일요일 시작) ---
+# --- 탭 2: 강의 캘린더 (날짜 클릭 자동 선택 기능 추가) ---
 with tab2:
     st.subheader("강의 캘린더")
 
@@ -423,6 +417,7 @@ with tab2:
         cal = calendar.Calendar(firstweekday=6)
         month_days = cal.monthdatescalendar(year, month)
 
+        # 빨간색 [N개 강좌] 클릭 시 세션 상태에 클릭한 날짜 저장
         for week in month_days:
             cols = st.columns(7)
             for idx, date_obj in enumerate(week):
@@ -431,33 +426,35 @@ with tab2:
 
                 if date_obj.month == month:
                     count = date_counts.get(date_str, 0)
-                    badge_html = (
-                        f"<br><span style='background-color:#d32f2f;"
-                        " color:white; padding:2px 6px; border-radius:10px;"
-                        f" font-size:11px;'>{count}개 강좌</span>"
-                        if count > 0
-                        else ""
-                    )
-
                     day_color = (
                         "color:#d32f2f;"
                         if idx == 0
                         else ("color:#1976d2;" if idx == 6 else "")
                     )
 
-                    cols[idx].markdown(
-                        "<div style='border:1px solid #ddd;"
-                        " background-color:#ffffff; padding:8px;"
-                        " border-radius:6px; min-height:75px;"
-                        f" text-align:center;'><b"
-                        f" style='{day_color}'>{day_num}</b>{badge_html}</div>",
-                        unsafe_allow_html=True,
-                    )
+                    with cols[idx]:
+                        st.markdown(
+                            f"<div style='text-align:center;'><b><span"
+                            f" style='{day_color}'>{day_num}</span></b></div>",
+                            unsafe_allow_html=True,
+                        )
+                        if count > 0:
+                            if st.button(
+                                f"🔴 {count}개 강좌",
+                                key=f"btn_cal_{date_str}",
+                                use_container_width=True,
+                            ):
+                                st.session_state["cal_selected_date"] = date_str
+                                st.rerun()
+                        else:
+                            st.markdown(
+                                "<div style='min-height:35px;'></div>",
+                                unsafe_allow_html=True,
+                            )
                 else:
                     cols[idx].markdown(
-                        "<div style='border:1px solid #f0f0f0;"
-                        " background-color:#fcfcfc; padding:8px;"
-                        " border-radius:6px; min-height:75px;'></div>",
+                        "<div style='min-height:60px;"
+                        " background-color:#fcfcfc;'></div>",
                         unsafe_allow_html=True,
                     )
 
@@ -469,9 +466,21 @@ with tab2:
             if d.startswith(f"{year}-{month:02d}")
         ])
         if available_dates:
+            # 클릭하여 선택된 날짜가 리스트에 있다면 인덱스 설정
+            default_idx = 0
+            if (
+                "cal_selected_date" in st.session_state
+                and st.session_state["cal_selected_date"] in available_dates
+            ):
+                default_idx = available_dates.index(
+                    st.session_state["cal_selected_date"]
+                )
+
             selected_date = st.selectbox(
                 "📅 상세 정보를 확인할 날짜를 선택하세요:",
                 available_dates,
+                index=default_idx,
+                key="cal_selectbox_date",
             )
 
             st.markdown(
@@ -554,7 +563,6 @@ with tab4:
             horizontal=True,
         )
 
-        # 기본 추천 지역 카테고리 목록
         default_regions = [
             "충청(대전)",
             "충청(신탄진)",

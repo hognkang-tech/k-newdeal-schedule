@@ -3,7 +3,6 @@ import sqlite3
 from datetime import datetime
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 
 st.set_page_config(
     page_title="K-뉴딜 커리어 일정 관리", page_icon="📅", layout="wide"
@@ -486,7 +485,7 @@ with tab1:
 
         render_styled_table(disp_df1, detail_col_name="일자별 세부 시간")
 
-# --- 탭 2: 강의 캘린더 (세션 유지 전체 카드 클릭 + 가로 길이 절반 알약 버튼) ---
+# --- 탭 2: 강의 캘린더 (상세 목록 스크롤 제거 후 전체 표출) ---
 with tab2:
     st.subheader("강의 캘린더")
 
@@ -543,7 +542,6 @@ with tab2:
 
                     with cols[idx]:
                         if count > 0:
-                            # 카드 박스 내 상단 일자 + 하단 절반 크기 빨간 배지
                             st.markdown(
                                 f"""
                             <div class='cal-card-box'>
@@ -553,7 +551,6 @@ with tab2:
                             """,
                                 unsafe_allow_html=True,
                             )
-                            # 카드 전체 클릭 시 로그아웃 없이 세션 안전 동기화
                             if st.button(
                                 "select",
                                 key=f"btn_cal_{date_str}",
@@ -627,7 +624,9 @@ with tab2:
                     "총시간(h)",
                     "교육장소/주소",
                 ]
-                st.dataframe(disp_df, use_container_width=True)
+
+                # 스크롤 없이 전체 목록 그대로 표출 (styled table)
+                render_styled_table(disp_df, detail_col_name="")
         else:
             st.info(f"{year}년 {month}월에는 개설된 강의가 없습니다.")
 
@@ -644,7 +643,7 @@ with tab3:
         st.info("기록된 로그가 없습니다.")
     conn.close()
 
-# --- 탭 4: DB 데이터 관리/수정 ---
+# --- 탭 4: DB 데이터 관리/수정 (세부 일정 한눈에 전체 표시) ---
 with tab4:
     st.subheader("DB 데이터 관리/수정")
 
@@ -962,22 +961,48 @@ with tab4:
                             sessions = cursor.fetchall()
                             conn.close()
 
+                            # 등록된 세부 일정 전체 목록 표출
+                            st.write("#### 📌 등록된 세부 일정 전체 목록")
                             if sessions:
-                                sess_options = {
-                                    f"{s[1]} | {s[2]}~{s[3]} ({s[4]:.1f}시간)": s[
-                                        0
-                                    ]
-                                    for s in sessions
-                                }
-                                sel_sess_label = st.selectbox(
-                                    "등록된 세부일정 선택 (수정/삭제용):",
-                                    list(sess_options.keys()),
+                                sess_df = pd.DataFrame(
+                                    sessions,
+                                    columns=[
+                                        "세션ID",
+                                        "강의날짜",
+                                        "시작시간",
+                                        "종료시간",
+                                        "시간(h)",
+                                    ],
                                 )
-                                sel_sess_id = sess_options[sel_sess_label]
 
-                                curr_sess = [
-                                    s for s in sessions if s[0] == sel_sess_id
-                                ][0]
+                                # 드롭다운 대신 전체 세부일정 리스트 표시 및 선택 버튼 연결
+                                sel_sess_id = st.session_state.get(
+                                    f"edit_sess_id_{selected_id}", None
+                                )
+
+                                for s_id, s_date, s_time, e_time, h_val in sessions:
+                                    col_s1, col_s2 = st.columns([4, 1])
+                                    with col_s1:
+                                        st.write(
+                                            f"📅 **{s_date}** | {s_time} ~"
+                                            f" {e_time} ({h_val:.1f}시간)"
+                                        )
+                                    with col_s2:
+                                        if st.button(
+                                            "✏️ 선택", key=f"btn_sel_{s_id}"
+                                        ):
+                                            st.session_state[
+                                                f"edit_sess_id_{selected_id}"
+                                            ] = s_id
+                                            st.rerun()
+
+                                if sel_sess_id:
+                                    curr_sess = [
+                                        s for s in sessions if s[0] == sel_sess_id
+                                    ][0]
+                                else:
+                                    curr_sess = sessions[0]
+                                    sel_sess_id = curr_sess[0]
                             else:
                                 sel_sess_id = None
                                 curr_sess = (
@@ -986,9 +1011,10 @@ with tab4:
                                     "09:00",
                                     "18:00",
                                 )
+                                st.info("등록된 세부 일정이 없습니다.")
 
                             st.markdown("---")
-                            st.write("#### 세부 날짜 및 시간 입력/수정")
+                            st.write("#### 📝 세부 날짜 및 시간 입력/수정")
                             new_s_date = st.date_input(
                                 "강의 날짜",
                                 value=datetime.strptime(

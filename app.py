@@ -8,6 +8,29 @@ st.set_page_config(
     page_title="K-뉴딜 커리어 일정 관리", page_icon="📅", layout="wide"
 )
 
+# Custom CSS: 강의 캘린더 내 빨간 배지 버튼 스타일 복원
+st.markdown(
+    """
+    <style>
+    div[key^="btn_cal_"] > button {
+        background-color: #d32f2f !important;
+        color: white !important;
+        border-radius: 12px !important;
+        padding: 2px 8px !important;
+        font-size: 11px !important;
+        font-weight: bold !important;
+        border: none !important;
+        margin-top: 4px !important;
+    }
+    div[key^="btn_cal_"] > button:hover {
+        background-color: #b71c1c !important;
+        color: white !important;
+    }
+    </style>
+""",
+    unsafe_allow_html=True,
+)
+
 # =========================================================
 # 🔒 간단한 시스템 접속 비밀번호 인증
 # =========================================================
@@ -376,7 +399,7 @@ with tab1:
 
         render_styled_table(disp_df1, detail_col_name="일자별 세부 시간")
 
-# --- 탭 2: 강의 캘린더 (날짜 클릭 자동 선택 기능 추가) ---
+# --- 탭 2: 강의 캘린더 (기존 빨간색 배지 버튼 스타일 복원) ---
 with tab2:
     st.subheader("강의 캘린더")
 
@@ -417,7 +440,6 @@ with tab2:
         cal = calendar.Calendar(firstweekday=6)
         month_days = cal.monthdatescalendar(year, month)
 
-        # 빨간색 [N개 강좌] 클릭 시 세션 상태에 클릭한 날짜 저장
         for week in month_days:
             cols = st.columns(7)
             for idx, date_obj in enumerate(week):
@@ -434,27 +456,24 @@ with tab2:
 
                     with cols[idx]:
                         st.markdown(
-                            f"<div style='text-align:center;'><b><span"
-                            f" style='{day_color}'>{day_num}</span></b></div>",
+                            "<div style='border:1px solid #ddd;"
+                            " background-color:#ffffff; padding:6px;"
+                            " border-radius:6px; min-height:75px;"
+                            f" text-align:center;'><b style='{day_color}'>{day_num}</b>",
                             unsafe_allow_html=True,
                         )
                         if count > 0:
                             if st.button(
-                                f"🔴 {count}개 강좌",
-                                key=f"btn_cal_{date_str}",
-                                use_container_width=True,
+                                f"{count}개 강좌", key=f"btn_cal_{date_str}"
                             ):
                                 st.session_state["cal_selected_date"] = date_str
                                 st.rerun()
-                        else:
-                            st.markdown(
-                                "<div style='min-height:35px;'></div>",
-                                unsafe_allow_html=True,
-                            )
+                        st.markdown("</div>", unsafe_allow_html=True)
                 else:
                     cols[idx].markdown(
-                        "<div style='min-height:60px;"
-                        " background-color:#fcfcfc;'></div>",
+                        "<div style='border:1px solid #f0f0f0;"
+                        " background-color:#fcfcfc; padding:6px;"
+                        " border-radius:6px; min-height:75px;'></div>",
                         unsafe_allow_html=True,
                     )
 
@@ -466,7 +485,6 @@ with tab2:
             if d.startswith(f"{year}-{month:02d}")
         ])
         if available_dates:
-            # 클릭하여 선택된 날짜가 리스트에 있다면 인덱스 설정
             default_idx = 0
             if (
                 "cal_selected_date" in st.session_state

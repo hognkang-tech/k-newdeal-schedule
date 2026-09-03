@@ -50,6 +50,74 @@ def get_connection():
     return sqlite3.connect("schedule_db.db")
 
 
+def update_region_categories():
+    """요청된 세부 지역명으로 DB 자동 업데이트 함수"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # 1. 삼성2차 한수지 강사 -> 충청(신탄진)
+    cursor.execute("""
+        UPDATE courses 
+        SET region = '충청(신탄진)' 
+        WHERE degree = '삼성 2차' AND instructor LIKE '%한수지%'
+    """)
+
+    # 2. 삼성 1차, 3차 선박제조기술자(거제) -> 경남(거제)
+    cursor.execute("""
+        UPDATE courses 
+        SET region = '경남(거제)' 
+        WHERE (degree = '삼성 1차' OR degree = '삼성 3차') 
+          AND (course_name LIKE '%선박제조기술자%' OR location LIKE '%거제%')
+    """)
+
+    # 3. 롯데 과정 지역 매핑
+    cursor.execute("""
+        UPDATE courses 
+        SET region = '서울(롯데)' 
+        WHERE group_name LIKE '%롯데%' AND (region LIKE '%수도권%' OR region LIKE '%서울%' OR location LIKE '%서울%')
+    """)
+    cursor.execute("""
+        UPDATE courses 
+        SET region = '부산(롯데)' 
+        WHERE group_name LIKE '%롯데%' AND (region LIKE '%영남%' OR region LIKE '%부산%' OR location LIKE '%부산%')
+    """)
+
+    # 4. 한화 과정 지역 매핑
+    cursor.execute("""
+        UPDATE courses 
+        SET region = '한화(거제)' 
+        WHERE group_name LIKE '%한화%' OR location LIKE '%한화%' OR location LIKE '%거제%'
+    """)
+
+    # 5. 기존 광역 지역명을 세부 지역명으로 정리
+    cursor.execute(
+        "UPDATE courses SET region = '충청(대전)' WHERE region = '충청'"
+    )
+    cursor.execute(
+        "UPDATE courses SET region = '호남(광주)' WHERE region = '호남'"
+    )
+    cursor.execute("""
+        UPDATE courses 
+        SET region = '경북(구미)' 
+        WHERE region = '영남' AND (location LIKE '%구미%' OR course_name LIKE '%구미%')
+    """)
+    cursor.execute("""
+        UPDATE courses 
+        SET region = '경남(부산)' 
+        WHERE region = '영남' AND (location LIKE '%부산%' OR location LIKE '%경남%' OR region NOT LIKE '%구미%')
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+# 앱 실행 시 세부 지역 카테고리 자동 업데이트
+try:
+    update_region_categories()
+except Exception:
+    pass
+
+
 def calculate_session_hours(start_str, end_str):
     fmt = "%H:%M"
     try:
@@ -131,7 +199,6 @@ def get_formatted_sessions_html(course_id, conn):
     for s_date, s_time, e_time in sessions:
         try:
             dt = datetime.strptime(s_date, "%Y-%m-%d")
-            # Python datetime.weekday(): 0=월, 1=화, ... 6=일 -> 일요일 시작 배열 매핑: (dt.weekday() + 1) % 7
             w_idx = (dt.weekday() + 1) % 7
             w_str = weekday_kr[w_idx]
             m, d = dt.month, dt.day
@@ -315,7 +382,7 @@ with tab1:
 
         render_styled_table(disp_df1, detail_col_name="일자별 세부 시간")
 
-# --- 탭 2: 강의 캘린더 (일요일 시작으로 변경) ---
+# --- 탭 2: 강의 캘린더 (일요일 시작) ---
 with tab2:
     st.subheader("강의 캘린더")
 
@@ -339,7 +406,6 @@ with tab2:
         st.markdown(f"#### 📌 {year}년 {month}월 강의 일정 달력")
 
         cols_header = st.columns(7)
-        # 일요일 시작 요일 순서
         days_kr = ["일", "월", "화", "수", "목", "금", "토"]
         for idx, day_name in enumerate(days_kr):
             bg_color = (
@@ -354,7 +420,6 @@ with tab2:
                 unsafe_allow_html=True,
             )
 
-        # firstweekday=6 : 일요일(Sunday)부터 시작하도록 설정
         cal = calendar.Calendar(firstweekday=6)
         month_days = cal.monthdatescalendar(year, month)
 
@@ -456,11 +521,10 @@ with tab3:
         st.info("기록된 로그가 없습니다.")
     conn.close()
 
-# --- 탭 4: DB 데이터 관리/수정 (저장/수정 알림 메시지 보강) ---
+# --- 탭 4: DB 데이터 관리/수정 ---
 with tab4:
     st.subheader("DB 데이터 관리/수정")
 
-    # 세션 기반 저장 안내 메시지 출력
     if "flash_msg" in st.session_state:
         st.success(st.session_state.flash_msg)
         del st.session_state.flash_msg
@@ -489,6 +553,19 @@ with tab4:
             ],
             horizontal=True,
         )
+
+        # 기본 추천 지역 카테고리 목록
+        default_regions = [
+            "충청(대전)",
+            "충청(신탄진)",
+            "호남(광주)",
+            "경북(구미)",
+            "경남(부산)",
+            "경남(거제)",
+            "서울(롯데)",
+            "부산(롯데)",
+            "한화(거제)",
+        ]
 
         if manage_mode == "1. 강좌 수정/삭제 및 세부시간 관리":
             if not df_courses.empty:
@@ -545,11 +622,20 @@ with tab4:
                             for x in df_courses["group_name"].dropna().unique()
                             if x
                         ])
-                        existing_regions = sorted([
-                            str(x)
-                            for x in df_courses["region"].dropna().unique()
-                            if x
-                        ])
+                        existing_regions = sorted(
+                            list(
+                                set(
+                                    default_regions
+                                    + [
+                                        str(x)
+                                        for x in df_courses["region"]
+                                        .dropna()
+                                        .unique()
+                                        if x
+                                    ]
+                                )
+                            )
+                        )
                         existing_degrees = sorted([
                             str(x)
                             for x in df_courses["degree"].dropna().unique()
@@ -925,11 +1011,22 @@ with tab4:
                 for x in df_courses["group_name"].dropna().unique()
                 if str(x).strip()
             ]) if not df_courses.empty else []
-            existing_regions = sorted([
-                str(x)
-                for x in df_courses["region"].dropna().unique()
-                if str(x).strip()
-            ]) if not df_courses.empty else []
+            existing_regions = sorted(
+                list(
+                    set(
+                        default_regions
+                        + (
+                            [
+                                str(x)
+                                for x in df_courses["region"].dropna().unique()
+                                if str(x).strip()
+                            ]
+                            if not df_courses.empty
+                            else []
+                        )
+                    )
+                )
+            )
             existing_courses = sorted([
                 str(x)
                 for x in df_courses["course_name"].dropna().unique()

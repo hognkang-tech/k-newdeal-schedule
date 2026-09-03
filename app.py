@@ -8,16 +8,16 @@ st.set_page_config(
     page_title="K-뉴딜 커리어 일정 관리", page_icon="📅", layout="wide"
 )
 
-# Custom CSS: 강의 캘린더 날짜 박스 및 내부 하단 중앙 배치 버튼 스타일링
+# Custom CSS: 날짜 상자 내부 완벽 포함 및 빨간색 버튼(테두리 없음, 하단 중앙) 스타일링
 st.markdown(
     """
     <style>
-    /* 캘린더 날짜 카드 박스 스타일 */
-    .cal-day-box {
-        border: 1px solid #e0e0e0;
+    /* 날짜 전체 상자 (HTML) */
+    .cal-day-container {
+        border: 1px solid #dcdcdc;
         background-color: #ffffff;
         border-radius: 8px;
-        padding: 6px;
+        padding: 8px 4px 6px 4px;
         min-height: 85px;
         display: flex;
         flex-direction: column;
@@ -25,40 +25,46 @@ st.markdown(
         align-items: center;
         box-sizing: border-box;
     }
-    .cal-day-box-empty {
-        border: 1px solid #f5f5f5;
+    .cal-day-container-empty {
+        border: 1px solid #f0f0f0;
         background-color: #fcfcfc;
         border-radius: 8px;
         min-height: 85px;
     }
     .cal-day-num {
         font-weight: bold;
-        font-size: 14px;
+        font-size: 15px;
         text-align: center;
-        margin-bottom: 4px;
     }
     
-    /* 날짜 박스 하단 중앙 배치 빨간색 버튼 커스텀 */
+    /* 상자 내부 하단 중앙 배치 버튼 */
     div[key^="btn_cal_"] {
-        width: 100%;
-        display: flex;
-        justify-content: center;
-        margin-top: auto;
+        width: 100% !important;
+        display: flex !important;
+        justify-content: center !important;
+        margin-top: auto !important;
     }
     div[key^="btn_cal_"] > button {
         background-color: #d32f2f !important;
         color: #ffffff !important;
         border-radius: 12px !important;
-        padding: 2px 10px !important;
+        padding: 3px 10px !important;
         font-size: 11px !important;
         font-weight: bold !important;
         border: none !important;
-        width: 90% !important;
-        box-shadow: 0px 1px 3px rgba(0,0,0,0.2);
+        outline: none !important;
+        box-shadow: none !important;
+        width: 85% !important;
+        margin: 0 auto !important;
     }
     div[key^="btn_cal_"] > button:hover {
         background-color: #b71c1c !important;
         color: #ffffff !important;
+        border: none !important;
+    }
+    div[key^="btn_cal_"] > button:focus {
+        border: none !important;
+        box-shadow: none !important;
     }
     </style>
 """,
@@ -433,7 +439,7 @@ with tab1:
 
         render_styled_table(disp_df1, detail_col_name="일자별 세부 시간")
 
-# --- 탭 2: 강의 캘린더 (날짜 버튼 클릭 시 하단 드롭다운 자동 동기화 기능 보완) ---
+# --- 탭 2: 강의 캘린더 (날짜 박스 내부 완전 통합 + 테두리 없는 빨간색 배지 버튼) ---
 with tab2:
     st.subheader("강의 캘린더")
 
@@ -489,25 +495,29 @@ with tab2:
                     )
 
                     with cols[idx]:
+                        # HTML 박스 내부 상단에 숫자 배치
                         st.markdown(
-                            f"<div class='cal-day-box'><div"
+                            f"<div class='cal-day-container'><div"
                             f" class='cal-day-num'><span"
                             f" style='{day_color}'>{day_num}</span></div>",
                             unsafe_allow_html=True,
                         )
+
+                        # HTML 박스 내부 하단 중앙에 Streamlit 버튼 삽입
                         if count > 0:
                             if st.button(
                                 f"{count}개 강좌", key=f"btn_cal_{date_str}"
                             ):
-                                # 버튼 클릭 시 드롭다운 선택값(cal_selectbox_date)을 해당 날짜로 직접 업데이트
                                 st.session_state["cal_selectbox_date"] = (
                                     date_str
                                 )
                                 st.rerun()
+
+                        # HTML 박스 닫기
                         st.markdown("</div>", unsafe_allow_html=True)
                 else:
                     cols[idx].markdown(
-                        "<div class='cal-day-box-empty'></div>",
+                        "<div class='cal-day-container-empty'></div>",
                         unsafe_allow_html=True,
                     )
 
@@ -519,7 +529,6 @@ with tab2:
             if d.startswith(f"{year}-{month:02d}")
         ])
         if available_dates:
-            # 드롭다운 초기값 동기화 설정
             if "cal_selectbox_date" not in st.session_state:
                 st.session_state["cal_selectbox_date"] = available_dates[0]
             elif (

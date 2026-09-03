@@ -127,11 +127,13 @@ def get_formatted_sessions_html(course_id, conn):
     )
     sessions = cursor.fetchall()
     lines = []
-    weekday_kr = ["월", "화", "수", "목", "금", "토", "일"]
+    weekday_kr = ["일", "월", "화", "수", "목", "금", "토"]
     for s_date, s_time, e_time in sessions:
         try:
             dt = datetime.strptime(s_date, "%Y-%m-%d")
-            w_str = weekday_kr[dt.weekday()]
+            # Python datetime.weekday(): 0=월, 1=화, ... 6=일 -> 일요일 시작 배열 매핑: (dt.weekday() + 1) % 7
+            w_idx = (dt.weekday() + 1) % 7
+            w_str = weekday_kr[w_idx]
             m, d = dt.month, dt.day
             lines.append(
                 f"<span style='white-space: nowrap;'>{m}.{d}({w_str})"
@@ -313,7 +315,7 @@ with tab1:
 
         render_styled_table(disp_df1, detail_col_name="일자별 세부 시간")
 
-# --- 탭 2: 강의 캘린더 ---
+# --- 탭 2: 강의 캘린더 (일요일 시작으로 변경) ---
 with tab2:
     st.subheader("강의 캘린더")
 
@@ -337,16 +339,23 @@ with tab2:
         st.markdown(f"#### 📌 {year}년 {month}월 강의 일정 달력")
 
         cols_header = st.columns(7)
-        days_kr = ["월", "화", "수", "목", "금", "토", "일"]
+        # 일요일 시작 요일 순서
+        days_kr = ["일", "월", "화", "수", "목", "금", "토"]
         for idx, day_name in enumerate(days_kr):
+            bg_color = (
+                "#d32f2f"
+                if idx == 0
+                else ("#1976d2" if idx == 6 else "#1565c0")
+            )
             cols_header[idx].markdown(
                 f"<div style='text-align:center; font-weight:bold;"
-                f" background-color:#1565c0; color:white; padding:6px;"
+                f" background-color:{bg_color}; color:white; padding:6px;"
                 f" border-radius:4px;'>{day_name}</div>",
                 unsafe_allow_html=True,
             )
 
-        cal = calendar.Calendar(firstweekday=0)
+        # firstweekday=6 : 일요일(Sunday)부터 시작하도록 설정
+        cal = calendar.Calendar(firstweekday=6)
         month_days = cal.monthdatescalendar(year, month)
 
         for week in month_days:
@@ -365,11 +374,18 @@ with tab2:
                         else ""
                     )
 
+                    day_color = (
+                        "color:#d32f2f;"
+                        if idx == 0
+                        else ("color:#1976d2;" if idx == 6 else "")
+                    )
+
                     cols[idx].markdown(
                         "<div style='border:1px solid #ddd;"
                         " background-color:#ffffff; padding:8px;"
                         " border-radius:6px; min-height:75px;"
-                        f" text-align:center;'><b>{day_num}</b>{badge_html}</div>",
+                        f" text-align:center;'><b"
+                        f" style='{day_color}'>{day_num}</b>{badge_html}</div>",
                         unsafe_allow_html=True,
                     )
                 else:
@@ -440,9 +456,14 @@ with tab3:
         st.info("기록된 로그가 없습니다.")
     conn.close()
 
-# --- 탭 4: DB 데이터 관리/수정 ---
+# --- 탭 4: DB 데이터 관리/수정 (저장/수정 알림 메시지 보강) ---
 with tab4:
     st.subheader("DB 데이터 관리/수정")
+
+    # 세션 기반 저장 안내 메시지 출력
+    if "flash_msg" in st.session_state:
+        st.success(st.session_state.flash_msg)
+        del st.session_state.flash_msg
 
     if not st.session_state.authenticated:
         st.warning(
@@ -549,7 +570,6 @@ with tab4:
                         with col1:
                             st.markdown("### 📝 강좌 기본 정보 수정")
 
-                            # 1) 그룹명
                             curr_group = c_data[0] or ""
                             group_opts = (
                                 [curr_group]
@@ -565,7 +585,6 @@ with tab4:
                                 else sel_group
                             )
 
-                            # 2) 지역/권역
                             curr_region = c_data[1] or ""
                             region_opts = (
                                 [curr_region]
@@ -587,12 +606,10 @@ with tab4:
                                 else sel_region
                             )
 
-                            # 3) 과목명
                             edit_course = st.text_input(
                                 "과목명", value=c_data[2] or ""
                             )
 
-                            # 4) 차수
                             curr_degree = c_data[3] or ""
                             deg_opts = (
                                 [curr_degree]
@@ -610,12 +627,10 @@ with tab4:
                                 else sel_degree
                             )
 
-                            # 5) 전체 기간
                             edit_period = st.text_input(
                                 "전체 기간", value=c_data[4] or ""
                             )
 
-                            # 6) 교육장소/주소
                             curr_location = c_data[5] or ""
                             loc_opts = (
                                 [curr_location]
@@ -638,7 +653,6 @@ with tab4:
                                 else sel_location
                             )
 
-                            # 7) 담당강사
                             curr_instructor = c_data[6] or ""
                             inst_opts = (
                                 [curr_instructor]
@@ -696,8 +710,9 @@ with tab4:
                                         f"과목: {edit_course}, 강사:"
                                         f" {edit_instructor}",
                                     )
-                                    st.success(
-                                        "강좌 정보가 성공적으로 수정되었습니다."
+                                    st.session_state.flash_msg = f"✅ 강좌 [ID {selected_id} | {edit_course}] 정보가 성공적으로 수정 및 저장되었습니다!"
+                                    st.toast(
+                                        "💾 성공적으로 수정 및 저장되었습니다."
                                     )
                                     st.rerun()
 
@@ -721,9 +736,8 @@ with tab4:
                                         selected_id,
                                         f"강좌 ID {selected_id} 삭제 완료",
                                     )
-                                    st.success(
-                                        "강좌가 완전히 삭제되었습니다."
-                                    )
+                                    st.session_state.flash_msg = f"✅ 강좌 (ID: {selected_id})가 성공적으로 삭제되었습니다."
+                                    st.toast("🗑️ 강좌가 삭제되었습니다.")
                                     st.rerun()
 
                         with col2:
@@ -835,9 +849,8 @@ with tab4:
                                         f"날짜: {s_date_str}, 시간:"
                                         f" {s_time_str}~{e_time_str}",
                                     )
-                                    st.success(
-                                        "새로운 세부일정이 추가되었습니다."
-                                    )
+                                    st.session_state.flash_msg = f"✅ [{s_date_str} {s_time_str}~{e_time_str}] 새로운 세부일정이 성공적으로 저장되었습니다!"
+                                    st.toast("➕ 세부일정 저장 완료")
                                     st.rerun()
 
                             with col_s_btn2:
@@ -872,7 +885,8 @@ with tab4:
                                         f"날짜: {s_date_str}, 시간:"
                                         f" {s_time_str}~{e_time_str}",
                                     )
-                                    st.success("세부일정이 수정되었습니다.")
+                                    st.session_state.flash_msg = f"✅ [{s_date_str} {s_time_str}~{e_time_str}] 세부일정이 성공적으로 수정 및 저장되었습니다!"
+                                    st.toast("✏️ 세부일정 수정 저장 완료")
                                     st.rerun()
 
                             with col_s_btn3:
@@ -896,15 +910,16 @@ with tab4:
                                         selected_id,
                                         f"세션 ID {sel_sess_id} 삭제",
                                     )
-                                    st.success(
-                                        "선택한 일자가 삭제되었습니다."
+                                    st.session_state.flash_msg = (
+                                        "✅ 선택한 세부일정이 성공적으로"
+                                        " 삭제되었습니다."
                                     )
+                                    st.toast("🗑️ 세부일정 삭제 완료")
                                     st.rerun()
 
         elif manage_mode == "2. 신규 강좌 추가":
             st.markdown("### ➕ 신규 강좌 추가")
 
-            # 기존 DB에 존재하는 목록 추출
             existing_groups = sorted([
                 str(x)
                 for x in df_courses["group_name"].dropna().unique()
@@ -945,7 +960,6 @@ with tab4:
 
             col_a, col_b = st.columns(2)
             with col_a:
-                # 1) 그룹명 선택/입력
                 sel_add_group = st.selectbox(
                     "그룹명 선택", existing_groups + ["[직접 입력]"]
                 )
@@ -955,7 +969,6 @@ with tab4:
                     else sel_add_group
                 )
 
-                # 2) 지역/권역 선택/입력
                 sel_add_region = st.selectbox(
                     "지역/권역 선택", existing_regions + ["[직접 입력]"]
                 )
@@ -965,7 +978,6 @@ with tab4:
                     else sel_add_region
                 )
 
-                # 3) 과목명 선택/입력
                 sel_add_course = st.selectbox(
                     "과목명 선택", existing_courses + ["[직접 입력]"]
                 )
@@ -975,7 +987,6 @@ with tab4:
                     else sel_add_course
                 )
 
-                # 4) 차수 선택/입력
                 sel_add_degree = st.selectbox(
                     "차수 선택", existing_degrees + ["[직접 입력]"]
                 )
@@ -986,12 +997,10 @@ with tab4:
                 )
 
             with col_b:
-                # 5) 전체 기간
                 add_period = st.text_input(
                     "전체 기간 (예: 2026-10-06 ~ 2026-10-10)"
                 )
 
-                # 6) 교육장소/주소 선택/입력
                 sel_add_loc = st.selectbox(
                     "교육장소/주소 선택", existing_locations + ["[직접 입력]"]
                 )
@@ -1001,7 +1010,6 @@ with tab4:
                     else sel_add_loc
                 )
 
-                # 7) 담당강사 선택/입력
                 sel_add_inst = st.selectbox(
                     "담당강사 선택", existing_instructors + ["[직접 입력]"]
                 )
@@ -1040,11 +1048,8 @@ with tab4:
                         new_id,
                         f"과목: {add_course}, 강사: {add_instructor}",
                     )
-                    st.success(
-                        f"신규 강좌(ID: {new_id})가 성공적으로 등록되었습니다! '1."
-                        " 강좌 수정/삭제' 메뉴에서 세부 시간을 등록할 수"
-                        " 있습니다."
-                    )
+                    st.session_state.flash_msg = f"✅ 신규 강좌 [ID {new_id} | {add_course}]가 성공적으로 저장되었습니다! '1. 강좌 수정/삭제' 메뉴에서 세부 시간을 등록하세요."
+                    st.toast("➕ 신규 강좌 저장 완료")
                     st.rerun()
 
         elif manage_mode == "3. 관리자 비밀번호 변경":
@@ -1073,7 +1078,12 @@ with tab4:
                     log_audit_event(
                         "비밀번호변경", 0, "관리자 접속 비밀번호 변경"
                     )
-                    st.success("비밀번호가 성공적으로 변경되었습니다.")
+                    st.session_state.flash_msg = (
+                        "✅ 관리자 비밀번호가 성공적으로 변경 및"
+                        " 저장되었습니다."
+                    )
+                    st.toast("🔑 비밀번호 변경 완료")
+                    st.rerun()
 
         st.markdown("---")
         if st.button("🔒 관리자 권한 해제"):
